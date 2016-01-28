@@ -51,7 +51,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 
 struct solver { FILE *coreFile, *lemmaFile, *traceFile, *proofFile;
-    gzFile inputFile;
+    //gzFile inputFile;
+    FILE* inputFile;
     int *DB, nVars, timeout, mask, use_delete, *falseStack, *is_false, *forced,
       *processed, *assigned, count, *used, *max, *delinfo, COREcount, RATmode, RATcount, MARKcount,
       Lcount, maxCandidates, *resolutionCandidates, maxDependencies, nDependencies,
@@ -837,7 +838,7 @@ int main (int argc, char** argv) {
     else {
       tmp++;
       if (tmp == 1) {
-        S.inputFile = gzopen(argv[1], "rb");
+        S.inputFile = fopen(argv[1], "rb");
         if (S.inputFile == NULL) {
           printf("c error opening \"%s\".\n", argv[i]); return ERROR; } }
 
@@ -851,7 +852,7 @@ int main (int argc, char** argv) {
 
   int parseReturnValue = parse(&S);
 
-  gzclose (S.inputFile);
+  fclose (S.inputFile);
   fclose (S.proofFile);
   int sts = ERROR;
   if       (parseReturnValue == ERROR)    printf ("s MEMORY ALLOCATION ERROR\n");
