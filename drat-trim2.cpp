@@ -50,17 +50,17 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define DEPENDENCIES_INIT_SIZE 10
 
 
-struct solver { FILE *coreFile, *lemmaFile, *traceFile;
-    gzFile inputFile, proofFile;
-    int *DB, nVars, timeout, mask, delete, *falseStack, *false, *forced,
+struct solver { FILE *coreFile, *lemmaFile, *traceFile, *proofFile;
+    gzFile inputFile;
+    int *DB, nVars, timeout, mask, use_delete, *falseStack, *is_false, *forced,
       *processed, *assigned, count, *used, *max, *delinfo, COREcount, RATmode, RATcount, MARKcount,
       Lcount, maxCandidates, *resolutionCandidates, maxDependencies, nDependencies,
       *dependencies, maxVar, mode, verb, unitSize, prep, *current, delLit; // depth, maxdepth;
     struct timeval start_time;
     long mem_used, time, nClauses, lastLemma, *unitStack, *reason, lemmas, arcs, *adlist, **wlist;  };
 
-#define ASSUME(a)	{ S->false[-(a)] = ASSUMED; *(S->assigned++) = -(a); S->reason[abs(a)] = 0; }
-#define ASSIGN(a)	{ S->false[-(a)] = 1; *(S->assigned++) = -(a); }
+#define ASSUME(a)	{ S->is_false[-(a)] = ASSUMED; *(S->assigned++) = -(a); S->reason[abs(a)] = 0; }
+#define ASSIGN(a)	{ S->is_false[-(a)] = 1; *(S->assigned++) = -(a); }
 #define ADD_WATCH(l,m)  { if (S->used[(l)] + 1 == S->max[(l)]) { S->max[(l)] *= 1.5; \
                             S->wlist[(l)] = (long *) realloc(S->wlist[(l)], sizeof(long) * S->max[(l)]); } \
                           S->wlist[(l)][ S->used[(l)]++ ] = (m); S->wlist[(l)][ S->used[(l)] ] = END; }
@@ -97,10 +97,10 @@ static inline void removeUnit (struct solver* S, int lit) {
 static inline void unassignUnit (struct solver* S, int lit) {
   if (S->verb)
     printf("c removing unit %i\n", lit);
-  while (S->false[-lit]) {
+  while (S->is_false[-lit]) {
     if (S->verb)
       printf("c removing unit %i (%i)\n", S->forced[-1], lit);
-    S->false[*(--S->forced)] = 0; }
+    S->is_false[*(--S->forced)] = 0; }
   S->processed = S->assigned = S->forced; }
 
 static inline void markWatch (struct solver* S, int* clause, int index, int offset) {
@@ -126,25 +126,25 @@ static inline void markClause (struct solver* S, int* clause, int index) {
     if (clause[1 + index] == 0) return;
     markWatch (S, clause,     index, -index);
     markWatch (S, clause, 1 + index, -index); }
-  while (*clause) S->false[ *(clause++) ] = MARK; }
+  while (*clause) S->is_false[ *(clause++) ] = MARK; }
 
 void analyze (struct solver* S, int* clause, int index) {     // Mark all clauses involved in conflict
   markClause (S, clause, index);
   while (S->assigned > S->falseStack) {
     int lit = *(--S->assigned);
-    if (S->false[ lit ] == MARK) {
+    if (S->is_false[ lit ] == MARK) {
       if (S->reason[ abs(lit) ]) {
         markClause (S, S->DB+S->reason[ abs(lit) ], -1);
         if (S->assigned >= S->forced)
           S->reason[ abs(lit) ] = 0; } }
-    else if (S->false[ lit ] == ASSUMED && !S->RATmode) {
+    else if (S->is_false[ lit ] == ASSUMED && !S->RATmode) {
       S->delLit++;
       if (S->lemmaFile || S->traceFile) {
         int *tmp = S->current;
         while (*tmp != lit) tmp++;
         while (*tmp) { tmp[0] = tmp[1]; tmp++; }
         tmp[-1] = 0; } }
-    S->false[ lit ] = (S->assigned < S->forced); }
+    S->is_false[ lit ] = (S->assigned < S->forced); }
 
   S->processed = S->assigned = S->forced; }
 
@@ -162,19 +162,19 @@ int propagate (struct solver* S, int init) {        // Performs unit propagation
      if ((*watch & mode) != check) {
         watch++; continue; }
      int *clause = S->DB + (*watch >> 1);	    // Get the clause from DB
-     if (S->false[ -clause[0] ] ||
-         S->false[ -clause[1] ]) {
+     if (S->is_false[ -clause[0] ] ||
+         S->is_false[ -clause[1] ]) {
        watch++; continue; }
      if (clause[0] == lit) clause[0] = clause[1];   // Ensure that the other watched literal is in front
       for (i = 2; clause[i]; ++i)                   // Scan the non-watched literals
-        if (S->false[ clause[i] ] == 0) {           // When clause[j] is not false, it is either true or unset
+        if (S->is_false[ clause[i] ] == 0) {           // When clause[j] is not false, it is either true or unset
           clause[1] = clause[i]; clause[i] = lit;   // Swap literals
           ADD_WATCH (clause[1], *watch);            // Add the watch to the list of clause[1]
           *watch = S->wlist[lit][ --S->used[lit] ]; // Remove pointer
           S->wlist[lit][ S->used[lit] ] = END;
           goto next_clause; }                       // Goto the next watched clause
       clause[1] = lit; watch++;                     // Set lit at clause[1] and set next watch
-      if (!S->false[  clause[0] ]) {                // If the other watched literal is falsified,
+      if (!S->is_false[  clause[0] ]) {                // If the other watched literal is falsified,
         ASSIGN (clause[0]);                         // A unit clause is found, and the reason is set
         S->reason[abs(clause[0])] = ((long) ((clause)-S->DB)) + 1;
         if (!check) {
@@ -188,7 +188,7 @@ int propagate (struct solver* S, int init) {        // Performs unit propagation
 
 static inline int propagateUnits (struct solver* S, int init) {
   int i;
-  while (S->forced > S->falseStack) { S->false[*(--S->forced)] = 0; }
+  while (S->forced > S->falseStack) { S->is_false[*(--S->forced)] = 0; }
   S->forced = S->assigned = S->processed = S->falseStack;
   for (i = 0; i < S->unitSize; i++) {
     int lit = S->DB[ S->unitStack[i] ];
@@ -205,8 +205,8 @@ int sortSize (struct solver *S, int *lemma, int diff) {
   unsigned int size = 0, last = 0, sat = 1;
   while (lemma[ last ]) {
     int lit = lemma[ last++ ];
-    if (S->false[ lit ] == 0) {
-      if (S->false[ -lit ]) sat = -1;
+    if (S->is_false[ lit ] == 0) {
+      if (S->is_false[ -lit ]) sat = -1;
       lemma[ last-1 ] = lemma[ size ];
       lemma[ size++ ] = lit; } }
   return sat * size; }
@@ -354,7 +354,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int uni) {
 	while (*watchedClause) {
           int lit = *watchedClause++;
           if (lit == -reslit) flag = 1;
-	  else if (S->false[-lit]) { // Unless some other literal is satisfied
+	  else if (S->is_false[-lit]) { // Unless some other literal is satisfied
             if (blocked == 0 || reason > S->reason[ abs(lit) ])
               blocked = lit, reason = S->reason[ abs(lit) ]; } }
 
@@ -376,12 +376,12 @@ int redundancyCheck (struct solver *S, int *clause, int size, int uni) {
     if (S->verb) {
       printf("c candidate: "); printClause (candidate); }
     while (*candidate) { int lit = *candidate++;
-      if (lit != -reslit && !S->false[lit]) {
+      if (lit != -reslit && !S->is_false[lit]) {
         ASSIGN(-lit); S->reason[abs(lit)] = 0; } }
     if (propagate (S, 0) == SAT) { flag  = 0; break; } }
 
   S->processed = S->forced = savedForced;
-  while (S->forced < S->assigned) S->false[*(--S->assigned)] = 0;
+  while (S->forced < S->assigned) S->is_false[*(--S->assigned)] = 0;
 
   if (flag == 0) {
     if (S->verb) printf("c RAT check failed\n");
@@ -427,10 +427,10 @@ int verify (struct solver *S) {
         else {  // no need to remove units while checking UNSAT
           S->adlist[ checked ] = 0; continue; } }
       else {
-        if (S->mode == BACKWARD_UNSAT && S->false[-lit]) { S->adlist[checked] = 0; continue; }
+        if (S->mode == BACKWARD_UNSAT && S->is_false[-lit]) { S->adlist[checked] = 0; continue; }
         else { addUnit (S, (long) (lemmas - S->DB)); } } }
 
-    if (d && lemmas[1]) { // if delete and not unit
+    if (d && lemmas[1]) { // if use_delete and not unit
       if ((S->reason[abs(lemmas[0])] - 1) == (lemmas - S->DB)) {
         if (S->mode == BACKWARD_UNSAT) { // ignore pseudo unit clause deletion
           S->adlist[ checked ] = 0; }
@@ -538,20 +538,22 @@ long matchClause (struct solver* S, long *clauselist, int listsize, int* input, 
   qsort (input, size, sizeof(int), compare);
   for (i = 0; i < listsize; ++i) {
     int *clause = S->DB + clauselist[i];
+
+    long result;
     for (j = 0; j <= size; j++)
       if (clause[j] != input[j]) goto match_next;
 
-    long result = clauselist[ i ];
+    result = clauselist[ i ];
     clauselist[ i ] = clauselist[ --listsize ];
     return result;
     match_next:; }
   return 0; }
 
 unsigned int getHash (int* input) {
-  unsigned int sum = 0, prod = 1, xor = 0;
+  unsigned int sum = 0, prod = 1, xor_val = 0;
   while (*input) {
-    prod *= *input; sum += *input; xor ^= *input; input++; }
-  return (1023 * sum + prod ^ (31 * xor)) % BIGINIT; }
+    prod *= *input; sum += *input; xor_val ^= *input; input++; }
+  return (1023 * sum + prod ^ (31 * xor_val)) % BIGINIT; }
 
 int parse (struct solver* S) {
   int tmp, active = 0, retvalue = SAT;
@@ -635,7 +637,7 @@ int parse (struct solver* S) {
 //      printf("c "); printClause(buffer);
       unsigned int hash = getHash (buffer);
       if (del || uni) {
-        if (S->delete) {
+        if (S->use_delete) {
 //          int  count = 0;
           long match = 0;
 //          for (;;) {
@@ -714,7 +716,7 @@ int parse (struct solver* S) {
   S->reason     = (long*) malloc((    n + 1) * sizeof(long)); // Array of clauses
   S->used       = (int *) malloc((2 * n + 1) * sizeof(int )); S->used  += n; // Labels for variables, non-zero means false
   S->max        = (int *) malloc((2 * n + 1) * sizeof(int )); S->max   += n; // Labels for variables, non-zero means false
-  S->false      = (int *) malloc((2 * n + 1) * sizeof(int )); S->false += n; // Labels for variables, non-zero means false
+  S->is_false      = (int *) malloc((2 * n + 1) * sizeof(int )); S->is_false += n; // Labels for variables, non-zero means false
 
   S->arcs      = 0;
   S->RATmode   = 0;
@@ -732,7 +734,7 @@ int parse (struct solver* S) {
 
   for (i = 1; i <= n; ++i) { S->reason    [i]           =    0;
                              S->falseStack[i]           =    0;
-	                     S->false[i] = S->false[-i] =    0;
+	                     S->is_false[i] = S->is_false[-i] =    0;
                              S->used [i] = S->used [-i] =    0;
                              S->max  [i] = S->max  [-i] = INIT; }
 
@@ -756,7 +758,7 @@ int parse (struct solver* S) {
         close (S->lemmaFile); }
       return UNSAT; }
     if (clause[1]) { addWatch (S, clause, 0); addWatch (S, clause, 1); }
-    else if (S->false[  clause[0] ]) {
+    else if (S->is_false[  clause[0] ]) {
       printf ("c found complementary unit clauses\n");
       if (S->coreFile) {
         fprintf (S->coreFile, "p cnf %i 2\n%i 0\n%i 0\n", abs(clause[0]), clause[0], -clause[0]);
@@ -765,7 +767,7 @@ int parse (struct solver* S) {
         fprintf (S->lemmaFile, "0\n");
         close (S->lemmaFile); }
       return UNSAT; }
-    else if (!S->false[ -clause[0] ]) {
+    else if (!S->is_false[ -clause[0] ]) {
       addUnit (S, (long) (clause - S->DB));
       ASSIGN (clause[0]); }
   }
@@ -779,7 +781,7 @@ void freeMemory(struct solver *S) {
   int i; for (i = 1; i <= S->maxVar; ++i) { free (S->wlist[i]); free (S->wlist[-i]); }
   free (S->used  - S->maxVar);
   free (S->max   - S->maxVar);
-  free (S->false - S->maxVar);
+  free (S->is_false - S->maxVar);
   free (S->wlist - S->maxVar);
   free (S->resolutionCandidates);
   free (S->dependencies);
@@ -816,7 +818,7 @@ int main (int argc, char** argv) {
   S.verb      = 0;
   S.prep      = 0;
   S.mode      = BACKWARD_UNSAT;
-  S.delete    = 1;
+  S.use_delete    = 1;
   gettimeofday(&S.start_time, NULL);
 
   int i, tmp = 0;
@@ -829,7 +831,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 't') S.timeout   = atoi(argv[++i]);
       else if (argv[i][1] == 'u') S.mask      = 1;
       else if (argv[i][1] == 'v') S.verb      = 1;
-      else if (argv[i][1] == 'p') S.delete    = 0;
+      else if (argv[i][1] == 'p') S.use_delete    = 0;
       else if (argv[i][1] == 'f') S.mode      = FORWARD_UNSAT;
       else if (argv[i][1] == 'S') S.mode      = FORWARD_SAT; }
     else {
@@ -840,7 +842,7 @@ int main (int argc, char** argv) {
           printf("c error opening \"%s\".\n", argv[i]); return ERROR; } }
 
       else if (tmp == 2) {
-        S.proofFile = gzopen(argv[2], "rb");
+        S.proofFile = fopen(argv[2], "rb");
         if (S.proofFile == NULL) {
           printf("c error opening \"%s\".\n", argv[i]); return ERROR; } } } }
 
@@ -850,7 +852,7 @@ int main (int argc, char** argv) {
   int parseReturnValue = parse(&S);
 
   gzclose (S.inputFile);
-  gzclose (S.proofFile);
+  fclose (S.proofFile);
   int sts = ERROR;
   if       (parseReturnValue == ERROR)    printf ("s MEMORY ALLOCATION ERROR\n");
   else if  (parseReturnValue == UNSAT)    printf ("c trivial UNSAT\ns VERIFIED\n");
