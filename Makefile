@@ -10,7 +10,7 @@ $(NAME) : $(OBJS)
 	$(CXX) -o $(NAME) $(OBJS) $(LFLAGS)
 
 drat-trim2.o : drat-trim2.c 
-	$(CXX) $(CPPFLAGS) -c drat-trim2.c
+	$(CXX) $(CPPFLAGS) -c drat-trim2.cpp
 
 clean:
 	rm -f *.o 
