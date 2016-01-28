@@ -22,6 +22,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/time.h>
+#include "zlib.h"
 
 #define TIMEOUT     20000
 #define BIGINIT     1000000
@@ -48,7 +49,9 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define CANDIDATE_INIT_SIZE    10
 #define DEPENDENCIES_INIT_SIZE 10
 
-struct solver { FILE *inputFile, *proofFile, *coreFile, *lemmaFile, *traceFile;
+
+struct solver { FILE *coreFile, *lemmaFile, *traceFile;
+    gzFile inputFile, proofFile;
     int *DB, nVars, timeout, mask, delete, *falseStack, *false, *forced,
       *processed, *assigned, count, *used, *max, *delinfo, COREcount, RATmode, RATcount, MARKcount,
       Lcount, maxCandidates, *resolutionCandidates, maxDependencies, nDependencies,
@@ -556,7 +559,9 @@ int parse (struct solver* S) {
   int *buffer, bsize;
 
   do { tmp = fscanf (S->inputFile, " cnf %i %li \n", &S->nVars, &S->nClauses);  // Read the first line
-    if (tmp > 0 && tmp != EOF) break; tmp = fscanf (S->inputFile, "%*s\n"); }  // In case a commment line was found
+    if (tmp > 0 && tmp != EOF) break;
+    tmp = fscanf (S->inputFile, "%*s\n"); // In case a commment line was found
+  }
   while (tmp != 2 && tmp != EOF);                                              // Skip it and read next line
   int nZeros = S->nClauses;
 
@@ -830,12 +835,12 @@ int main (int argc, char** argv) {
     else {
       tmp++;
       if (tmp == 1) {
-        S.inputFile = fopen (argv[1], "r");
+        S.inputFile = gzopen(argv[1], "rb");
         if (S.inputFile == NULL) {
           printf("c error opening \"%s\".\n", argv[i]); return ERROR; } }
 
       else if (tmp == 2) {
-        S.proofFile = fopen (argv[2], "r");
+        S.proofFile = gzopen(argv[2], "rb");
         if (S.proofFile == NULL) {
           printf("c error opening \"%s\".\n", argv[i]); return ERROR; } } } }
 
@@ -844,8 +849,8 @@ int main (int argc, char** argv) {
 
   int parseReturnValue = parse(&S);
 
-  fclose (S.inputFile);
-  fclose (S.proofFile);
+  gzclose (S.inputFile);
+  gzclose (S.proofFile);
   int sts = ERROR;
   if       (parseReturnValue == ERROR)    printf ("s MEMORY ALLOCATION ERROR\n");
   else if  (parseReturnValue == UNSAT)    printf ("c trivial UNSAT\ns VERIFIED\n");
