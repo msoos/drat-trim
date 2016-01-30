@@ -22,7 +22,14 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/time.h>
+#define USE_ZLIB
 #include "zlib.h"
+#include "streambuffer.h"
+
+#include <iostream>
+using std::cout;
+using std::endl;
+
 
 #define TIMEOUT     20000
 #define BIGINIT     1000000
@@ -49,16 +56,26 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define CANDIDATE_INIT_SIZE    10
 #define DEPENDENCIES_INIT_SIZE 10
 
+size_t gz_read(void* buf, size_t num, size_t count, gzFile f)
+{
+    return gzread(f, buf, num*count);
+}
 
-struct solver { FILE *coreFile, *lemmaFile, *traceFile, *proofFile;
-    //gzFile inputFile;
-    FILE* inputFile;
+struct solver { FILE *coreFile, *lemmaFile, *traceFile;
+    gzFile inputFile;
+    gzFile proofFile;
+    size_t input_line_num;
+    size_t proof_line_num;
     int *DB, nVars, timeout, mask, use_delete, *falseStack, *is_false, *forced,
       *processed, *assigned, count, *used, *max, *delinfo, COREcount, RATmode, RATcount, MARKcount,
       Lcount, maxCandidates, *resolutionCandidates, maxDependencies, nDependencies,
       *dependencies, maxVar, mode, verb, unitSize, prep, *current, delLit; // depth, maxdepth;
     struct timeval start_time;
-    long mem_used, time, nClauses, lastLemma, *unitStack, *reason, lemmas, arcs, *adlist, **wlist;  };
+    long mem_used, time, nClauses, lastLemma, *unitStack, *reason, lemmas, arcs, *adlist, **wlist;
+    StreamBuffer<gzFile, fread_op_zip, gz_read>* inputstream;
+    StreamBuffer<gzFile, fread_op_zip, gz_read>* proofstream;
+
+};
 
 #define ASSUME(a)	{ S->is_false[-(a)] = ASSUMED; *(S->assigned++) = -(a); S->reason[abs(a)] = 0; }
 #define ASSIGN(a)	{ S->is_false[-(a)] = 1; *(S->assigned++) = -(a); }
@@ -556,16 +573,42 @@ unsigned int getHash (int* input) {
     prod *= *input; sum += *input; xor_val ^= *input; input++; }
   return (1023 * sum + prod ^ (31 * xor_val)) % BIGINIT; }
 
+template<class C>
+bool match(C& in, const char* str)
+{
+    for (; *str != 0; ++str, ++in)
+        if (*str != *in)
+            return false;
+    return true;
+}
+
 int parse (struct solver* S) {
   int tmp, active = 0, retvalue = SAT;
   int del = 0, uni = 0;
   int *buffer, bsize;
 
-  do { tmp = fscanf (S->inputFile, " cnf %i %li \n", &S->nVars, &S->nClauses);  // Read the first line
-    if (tmp > 0 && tmp != EOF) break;
-    tmp = fscanf (S->inputFile, "%*s\n"); // In case a commment line was found
+  do {
+     //tmp = fscanf (S->inputFile, " cnf %i %li \n", &S->nVars, &S->nClauses);  // Read the first line
+     if (match(*S->inputstream, "p cnf")) {
+        int32_t num_vars;
+        int32_t clauses;
+
+        if (!S->inputstream->parseInt(num_vars, S->input_line_num)
+            || !S->inputstream->parseInt(clauses, S->input_line_num)
+        ) {
+            exit(-1);
+        }
+        S->nVars = num_vars;
+        S->nClauses = clauses;
+        //cout << "c Nvars: " << num_vars << ", clauses: " << clauses << endl;
+        S->inputstream->skipLine();
+        break;
+     }
+     S->inputstream->skipLine();
+    //if (tmp > 0 && tmp != EOF) break;
+    //tmp = fscanf (S->inputFile, "%*s\n"); // In case a commment line was found
   }
-  while (tmp != 2 && tmp != EOF);                                              // Skip it and read next line
+  while (true);
   int nZeros = S->nClauses;
 
   bsize = S->nVars*2;
@@ -598,38 +641,134 @@ int parse (struct solver* S) {
 
   int fileSwitchFlag = 0;
   size = 0;
+  bool is_eof = false;
   while (1) {
     int lit = 0; tmp = 0;
     fileSwitchFlag = nZeros <= 0;
+    //cout << "LIT 0: " << lit << endl;
 
     if (size == 0) {
-      if (!fileSwitchFlag) tmp = fscanf (S->inputFile, " d  %i ", &lit);
-      else tmp = fscanf (S->proofFile, " d  %i ", &lit);
-      if (tmp == EOF && !fileSwitchFlag) fileSwitchFlag = 1;
-      del = tmp > 0; }
+      if (!fileSwitchFlag) {
+          S->inputstream->skipWhitespace();
+          if (match(*S->inputstream, "d")) {
+              del = 1;
+              bool ret = S->inputstream->parseInt(lit, S->input_line_num);
+              assert(ret);
+              tmp = 1;
+              //cout << "LIT 1: " << lit << endl;
+              S->proofstream->skipWhitespace();
+              if (S->inputstream->operator*() == EOF)
+                  is_eof = true;
+          }
+          //tmp = fscanf (S->inputFile, " d  %i ", &lit);
+      }
+      else {
+          S->proofstream->skipWhitespace();
+          if (match(*S->proofstream, "d")) {
+              del = 1;
+              bool ret = S->proofstream->parseInt(lit, S->proof_line_num);
+              assert(ret);
+              tmp = 1;
+              //cout << "LIT 2: " << lit << endl;
+              S->proofstream->skipWhitespace();
+              if (S->proofstream->operator*() == EOF)
+                  is_eof = true;
+          }
+          //tmp = fscanf (S->proofFile, " d  %i ", &lit);
+      }
+      S->proofstream->skipWhitespace();
+      if (is_eof && !fileSwitchFlag) {
+          fileSwitchFlag = 1;
+          //cout << "Switched file: "  << fileSwitchFlag << endl;
+      }
+    }
 
+    //cout << "LIT 3: " << lit << endl;
     if (!lit) {
-      if (!fileSwitchFlag) tmp = fscanf (S->inputFile, " %i ", &lit);  // Read a literal.
-      else tmp = fscanf (S->proofFile, " %i ", &lit);
-      if (tmp == EOF && !fileSwitchFlag) fileSwitchFlag = 1; }
+      bool is_eof = false;
+      if (!fileSwitchFlag) {
+          //tmp = fscanf (S->inputFile, " %i ", &lit);  // Read a literal.
+          bool ret = S->inputstream->parseInt(lit, S->input_line_num, true);
+          assert(ret);
+          if (lit != std::numeric_limits<int32_t>::max())
+            tmp = 1;
+          //cout << "LIT 4: " << lit << endl;
+          S->proofstream->skipWhitespace();
+          if (S->inputstream->operator*() == EOF)
+              is_eof = true;
+      }
+      else {
+          //tmp = fscanf (S->proofFile, " %i ", &lit);
+          if (S->proofstream->operator*() == EOF) {
+              is_eof = true;
+              //cout << "proof EOF" << endl;
+              tmp = 1;
+          } else {
+              bool ret = S->proofstream->parseInt(lit, S->proof_line_num, true);
+              assert(ret);
+              if (lit != std::numeric_limits<int32_t>::max())
+                tmp = 1;
+              //cout << "LIT 5: " << lit << endl;
+              S->proofstream->skipWhitespace();
+              if (S->proofstream->operator*() == EOF)
+                  is_eof = true;
+          }
+      }
+      if (is_eof && !fileSwitchFlag) {
+          fileSwitchFlag = 1;
+          //cout << "Switched file: "  << fileSwitchFlag << endl;
+          is_eof = false;
+      }
+    }
 
     if (tmp == 0) {
-      char ignore[1024];
-      if (!fileSwitchFlag) { if (fgets (ignore, sizeof(ignore), S->inputFile) == NULL) printf("c\n"); }
-      else if (fgets (ignore, sizeof(ignore), S->proofFile) == NULL) printf("c\n");
-      if (S->verb) printf("c WARNING: parsing mismatch assuming a comment\n");
-      continue; }
+      //char ignore[1024];
+      if (!fileSwitchFlag) {
+        //if (fgets (ignore, sizeof(ignore), S->inputFile) == NULL) printf("c\n");
+          if (S->inputstream->skipLine()) {}
+            //printf("c\n");
+          //cout << "LIT 6: " << lit << endl;
+      }
+      else {
+          //if (fgets (ignore, sizeof(ignore), S->proofFile) == NULL) printf("c\n");
+          if (S->inputstream->skipLine()) {}
+            //printf("c\n");
+          //cout << "LIT 7: " << lit << endl;
+      }
+
+      if (S->verb)
+          printf("c WARNING: parsing mismatch assuming a comment\n");
+      continue;
+    }
+    //cout << "LIT final: " << lit << endl;
 
     if (abs(lit) > S->maxVar) S->maxVar = abs(lit);
     if (S->maxVar >= bsize) { bsize *= 2;
       buffer = (int*) realloc (buffer, sizeof(int) * bsize); }
 
-    if (tmp == EOF && fileSwitchFlag) break;
+    if (is_eof && fileSwitchFlag) break;
     if (abs(lit) > S->nVars && !fileSwitchFlag) {
-      printf("c illegal literal %i due to max var %i\n", lit, S->nVars); exit(0); }
+      printf("c illegal literal %i due to max var %i\n", lit, S->nVars);
+      assert(0);
+      exit(-1);
+    }
     if (!lit) {
       int myid = 0;
-      if (fileSwitchFlag) tmp = fscanf (S->proofFile, " %i ", &myid);
+      if (fileSwitchFlag) {
+          //tmp = fscanf (S->proofFile, " %i ", &myid);
+          bool ret = S->proofstream->parseInt(myid, S->proof_line_num, true);
+          assert(ret);
+          if (lit == std::numeric_limits<int32_t>::max())
+          {
+              std::cerr << "ID missing!" << endl;
+              assert(false);
+              exit(-1);
+          }
+          tmp = 1;
+          S->proofstream->skipLine();
+          if (S->proofstream->operator*() == EOF)
+              is_eof = true;
+      }
       if (size == 0 && !fileSwitchFlag) retvalue = UNSAT;
       if (del && S->mode == BACKWARD_UNSAT && size <= 1)  {
         del = 0; uni = 0; size = 0; continue; }
@@ -683,8 +822,10 @@ int parse (struct solver* S) {
       if (nZeros <= 0) S->Lcount++;
 
       if (!nZeros) S->lemmas   = (long) (clause - S->DB);    // S->lemmas is no longer pointer
-      size = 0; del = 0; uni = 0; --nZeros; }                // Reset buffer
-   else buffer[ size++ ] = lit; }                            // Add literal to buffer
+      size = 0; del = 0; uni = 0; --nZeros;// Reset buffer
+    }
+    else buffer[ size++ ] = lit; // Add literal to buffer
+  }
 
   if (S->mode == FORWARD_SAT && active) {
     printf("c WARNING: %i clauses active if proof succeeds\n", active);
@@ -810,7 +951,6 @@ int main (int argc, char** argv) {
   struct solver S;
 
   S.inputFile = NULL;
-  S.proofFile = stdin;
   S.coreFile  = NULL;
   S.lemmaFile = NULL;
   S.traceFile = NULL;
@@ -838,22 +978,29 @@ int main (int argc, char** argv) {
     else {
       tmp++;
       if (tmp == 1) {
-        S.inputFile = fopen(argv[1], "rb");
+        S.inputFile = gzopen(argv[1], "rb");
         if (S.inputFile == NULL) {
-          printf("c error opening \"%s\".\n", argv[i]); return ERROR; } }
-
+          printf("c error opening \"%s\".\n", argv[i]); return ERROR;
+        }
+        S.inputstream = new StreamBuffer<gzFile, fread_op_zip, gz_read>(S.inputFile);
+        S.input_line_num = 0;
+    }
       else if (tmp == 2) {
-        S.proofFile = fopen(argv[2], "rb");
+        S.proofFile = gzopen(argv[2], "rb");
         if (S.proofFile == NULL) {
-          printf("c error opening \"%s\".\n", argv[i]); return ERROR; } } } }
+          printf("c error opening \"%s\".\n", argv[i]); return ERROR; }
+        }
+        S.proofstream = new StreamBuffer<gzFile, fread_op_zip, gz_read>(S.proofFile);
+        S.proof_line_num = 0;
+    } }
 
   if (tmp == 1) printf ("c reading proof from stdin\n");
   if (tmp == 0) printHelp ();
 
   int parseReturnValue = parse(&S);
 
-  fclose (S.inputFile);
-  fclose (S.proofFile);
+  gzclose (S.inputFile);
+  gzclose (S.proofFile);
   int sts = ERROR;
   if       (parseReturnValue == ERROR)    printf ("s MEMORY ALLOCATION ERROR\n");
   else if  (parseReturnValue == UNSAT)    printf ("c trivial UNSAT\ns VERIFIED\n");
