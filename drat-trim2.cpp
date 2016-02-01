@@ -755,23 +755,26 @@ int parse (struct solver* S) {
       exit(-1);
     }
 
+    //End of official DRAT line
     if (!lit) {
       int myid = 0;
       if (reading_proof) {
-          //tmp = fscanf (S->proofFile, " %i ", &myid);
-          bool ret = S->proofstream->parseInt(myid, S->proof_line_num, true);
-          assert(ret);
-          if (lit == std::numeric_limits<int32_t>::max())
-          {
-              std::cerr << "ID missing!" << endl;
-              assert(false);
-              exit(-1);
+          if (!del) {
+              //tmp = fscanf (S->proofFile, " %i ", &myid);
+              bool ret = S->proofstream->parseInt(myid, S->proof_line_num, true);
+              assert(ret);
+              if (lit == std::numeric_limits<int32_t>::max())
+              {
+                  std::cerr << "ID missing!" << endl;
+                  assert(false);
+                  exit(-1);
+              }
           }
-          tmp = 1;
           S->proofstream->skipLine();
           if (S->proofstream->operator*() == EOF)
               is_eof = true;
       }
+
       if (size == 0 && !reading_proof) retvalue = UNSAT;
       if (del && S->mode == BACKWARD_UNSAT && size <= 1)  {
         del = 0; uni = 0; size = 0; continue; }
@@ -787,7 +790,9 @@ int parse (struct solver* S) {
             match = matchClause (S, hashTable[hash], hashUsed[hash], buffer, size);
             if (match == 0) {
 //              if (count) break;
-              printf("c MATCHING ERROR: "); printClause (buffer); exit (0); }
+              printf("c MATCHING ERROR: ");
+              printClause (buffer); exit (0);
+            }
             if (S->mode == FORWARD_SAT) S->DB[ match - 2 ] = rem;
 //            count++;
             hashUsed[hash]--;
@@ -797,10 +802,13 @@ int parse (struct solver* S) {
             S->adlist[ S->lastLemma++ ] = (match << INFOBITS) + 1; }
 //          if (count > 1) {
 //            printf("c WARNING: %i times removed ", count); printClause(buffer); } }
-        if (del) { del = 0; uni = 0; size = 0; continue; } }
+        if (del) { del = 0; uni = 0; size = 0; continue; }
+      }
 
-      if (S->mem_used + size + EXTRA > DBsize) { DBsize = (DBsize * 3) >> 1;
-	S->DB = (int *) realloc(S->DB, DBsize * sizeof(int)); }
+      if (S->mem_used + size + EXTRA > DBsize) {
+        DBsize = (DBsize * 3) >> 1;
+        S->DB = (int *) realloc(S->DB, DBsize * sizeof(int));
+      }
       int *clause = &S->DB[S->mem_used + EXTRA - 1];
       clause[MYID] = myid;
       if (size != 0) clause[PIVOT] = buffer[0];
