@@ -61,7 +61,13 @@ size_t gz_read(void* buf, size_t num, size_t count, gzFile f)
     return gzread(f, buf, num*count);
 }
 
-struct solver { FILE *coreFile, *lemmaFile, *traceFile;
+struct solver {
+    solver() :
+        nVars(-1)
+        , nClauses(-1)
+    {}
+
+    FILE *coreFile, *lemmaFile, *traceFile;
     gzFile inputFile;
     gzFile proofFile;
     size_t input_line_num;
@@ -590,17 +596,16 @@ int parse (struct solver* S) {
   do {
      //tmp = fscanf (S->inputFile, " cnf %i %li \n", &S->nVars, &S->nClauses);  // Read the first line
      if (match(*S->inputstream, "p cnf")) {
-        int32_t num_vars;
-        int32_t clauses;
+        int32_t num_vars = -1;
+        int32_t num_clauses = -1;
 
         if (!S->inputstream->parseInt(num_vars, S->input_line_num)
-            || !S->inputstream->parseInt(clauses, S->input_line_num)
+            || !S->inputstream->parseInt(num_clauses, S->input_line_num)
         ) {
             exit(-1);
         }
         S->nVars = num_vars;
-        S->nClauses = clauses;
-        //cout << "c Nvars: " << num_vars << ", clauses: " << clauses << endl;
+        S->nClauses = num_clauses;
         S->inputstream->skipLine();
         break;
      }
@@ -609,6 +614,12 @@ int parse (struct solver* S) {
     //tmp = fscanf (S->inputFile, "%*s\n"); // In case a commment line was found
   }
   while (true);
+
+  if (S->nVars < 0 || S->nClauses < 0) {
+      std::cerr << "ERROR: You must have a header in the CNF file!" << endl;
+      exit(-1);
+  }
+
   int nZeros = S->nClauses;
 
   bsize = S->nVars*2;
@@ -645,7 +656,6 @@ int parse (struct solver* S) {
   while (1) {
     int lit = 0; tmp = 0;
     reading_proof = nZeros <= 0;
-    //cout << "LIT 0: " << lit << endl;
 
     if (size == 0) {
       if (!reading_proof) {
@@ -655,7 +665,6 @@ int parse (struct solver* S) {
               bool ret = S->inputstream->parseInt(lit, S->input_line_num);
               assert(ret);
               tmp = 1;
-              //cout << "LIT 1: " << lit << endl;
               S->proofstream->skipWhitespace();
               if (S->inputstream->operator*() == EOF)
                   is_eof = true;
@@ -669,7 +678,6 @@ int parse (struct solver* S) {
               bool ret = S->proofstream->parseInt(lit, S->proof_line_num);
               assert(ret);
               tmp = 1;
-              //cout << "LIT 2: " << lit << endl;
               S->proofstream->skipWhitespace();
               if (S->proofstream->operator*() == EOF)
                   is_eof = true;
@@ -679,11 +687,9 @@ int parse (struct solver* S) {
       S->proofstream->skipWhitespace();
       if (is_eof && !reading_proof) {
           reading_proof = true;
-          //cout << "Switched file: "  << reading_proof << endl;
       }
     }
 
-    //cout << "LIT 3: " << lit << endl;
     if (!lit) {
       bool is_eof = false;
       if (!reading_proof) {
@@ -692,7 +698,6 @@ int parse (struct solver* S) {
           assert(ret);
           if (lit != std::numeric_limits<int32_t>::max())
             tmp = 1;
-          //cout << "LIT 4: " << lit << endl;
           S->proofstream->skipWhitespace();
           if (S->inputstream->operator*() == EOF)
               is_eof = true;
@@ -701,14 +706,12 @@ int parse (struct solver* S) {
           //tmp = fscanf (S->proofFile, " %i ", &lit);
           if (S->proofstream->operator*() == EOF) {
               is_eof = true;
-              //cout << "proof EOF" << endl;
               tmp = 1;
           } else {
               bool ret = S->proofstream->parseInt(lit, S->proof_line_num, true);
               assert(ret);
               if (lit != std::numeric_limits<int32_t>::max())
                 tmp = 1;
-              //cout << "LIT 5: " << lit << endl;
               S->proofstream->skipWhitespace();
               if (S->proofstream->operator*() == EOF)
                   is_eof = true;
@@ -716,7 +719,6 @@ int parse (struct solver* S) {
       }
       if (is_eof && !reading_proof) {
           reading_proof = 1;
-          //cout << "Switched file: "  << reading_proof << endl;
           is_eof = false;
       }
     }
@@ -727,20 +729,17 @@ int parse (struct solver* S) {
         //if (fgets (ignore, sizeof(ignore), S->inputFile) == NULL) printf("c\n");
           if (S->inputstream->skipLine()) {}
             //printf("c\n");
-          //cout << "LIT 6: " << lit << endl;
       }
       else {
           //if (fgets (ignore, sizeof(ignore), S->proofFile) == NULL) printf("c\n");
           if (S->inputstream->skipLine()) {}
             //printf("c\n");
-          //cout << "LIT 7: " << lit << endl;
       }
 
       if (S->verb)
           printf("c WARNING: parsing mismatch assuming a comment\n");
       continue;
     }
-    //cout << "LIT final: " << lit << endl;
 
     if (abs(lit) > S->maxVar) S->maxVar = abs(lit);
     if (S->maxVar >= bsize) { bsize *= 2;
