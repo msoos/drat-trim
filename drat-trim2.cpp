@@ -639,16 +639,16 @@ int parse (struct solver* S) {
     hashMax  [ i ] = INIT;
     hashTable[ i ] = (long*) malloc (sizeof(long) * hashMax[i]); }
 
-  int fileSwitchFlag = 0;
+  bool reading_proof = false;
   size = 0;
   bool is_eof = false;
   while (1) {
     int lit = 0; tmp = 0;
-    fileSwitchFlag = nZeros <= 0;
+    reading_proof = nZeros <= 0;
     //cout << "LIT 0: " << lit << endl;
 
     if (size == 0) {
-      if (!fileSwitchFlag) {
+      if (!reading_proof) {
           S->inputstream->skipWhitespace();
           if (match(*S->inputstream, "d")) {
               del = 1;
@@ -677,16 +677,16 @@ int parse (struct solver* S) {
           //tmp = fscanf (S->proofFile, " d  %i ", &lit);
       }
       S->proofstream->skipWhitespace();
-      if (is_eof && !fileSwitchFlag) {
-          fileSwitchFlag = 1;
-          //cout << "Switched file: "  << fileSwitchFlag << endl;
+      if (is_eof && !reading_proof) {
+          reading_proof = true;
+          //cout << "Switched file: "  << reading_proof << endl;
       }
     }
 
     //cout << "LIT 3: " << lit << endl;
     if (!lit) {
       bool is_eof = false;
-      if (!fileSwitchFlag) {
+      if (!reading_proof) {
           //tmp = fscanf (S->inputFile, " %i ", &lit);  // Read a literal.
           bool ret = S->inputstream->parseInt(lit, S->input_line_num, true);
           assert(ret);
@@ -714,16 +714,16 @@ int parse (struct solver* S) {
                   is_eof = true;
           }
       }
-      if (is_eof && !fileSwitchFlag) {
-          fileSwitchFlag = 1;
-          //cout << "Switched file: "  << fileSwitchFlag << endl;
+      if (is_eof && !reading_proof) {
+          reading_proof = 1;
+          //cout << "Switched file: "  << reading_proof << endl;
           is_eof = false;
       }
     }
 
     if (tmp == 0) {
       //char ignore[1024];
-      if (!fileSwitchFlag) {
+      if (!reading_proof) {
         //if (fgets (ignore, sizeof(ignore), S->inputFile) == NULL) printf("c\n");
           if (S->inputstream->skipLine()) {}
             //printf("c\n");
@@ -746,15 +746,15 @@ int parse (struct solver* S) {
     if (S->maxVar >= bsize) { bsize *= 2;
       buffer = (int*) realloc (buffer, sizeof(int) * bsize); }
 
-    if (is_eof && fileSwitchFlag) break;
-    if (abs(lit) > S->nVars && !fileSwitchFlag) {
+    if (is_eof && reading_proof) break;
+    if (abs(lit) > S->nVars && !reading_proof) {
       printf("c illegal literal %i due to max var %i\n", lit, S->nVars);
       assert(0);
       exit(-1);
     }
     if (!lit) {
       int myid = 0;
-      if (fileSwitchFlag) {
+      if (reading_proof) {
           //tmp = fscanf (S->proofFile, " %i ", &myid);
           bool ret = S->proofstream->parseInt(myid, S->proof_line_num, true);
           assert(ret);
@@ -769,7 +769,7 @@ int parse (struct solver* S) {
           if (S->proofstream->operator*() == EOF)
               is_eof = true;
       }
-      if (size == 0 && !fileSwitchFlag) retvalue = UNSAT;
+      if (size == 0 && !reading_proof) retvalue = UNSAT;
       if (del && S->mode == BACKWARD_UNSAT && size <= 1)  {
         del = 0; uni = 0; size = 0; continue; }
       int rem = buffer[0];
