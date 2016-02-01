@@ -744,12 +744,17 @@ int parse (struct solver* S) {
     if (S->maxVar >= bsize) { bsize *= 2;
       buffer = (int*) realloc (buffer, sizeof(int) * bsize); }
 
-    if (is_eof && reading_proof) break;
+    //Finished completely with both input + proof
+    if (is_eof && reading_proof)
+        break;
+
+    //input cannot contain literal that is larger than declared in header
     if (abs(lit) > S->nVars && !reading_proof) {
       printf("c illegal literal %i due to max var %i\n", lit, S->nVars);
       assert(0);
       exit(-1);
     }
+
     if (!lit) {
       int myid = 0;
       if (reading_proof) {
@@ -822,7 +827,9 @@ int parse (struct solver* S) {
       if (!nZeros) S->lemmas   = (long) (clause - S->DB);    // S->lemmas is no longer pointer
       size = 0; del = 0; uni = 0; --nZeros;// Reset buffer
     }
-    else buffer[ size++ ] = lit; // Add literal to buffer
+    else {
+      buffer[ size++ ] = lit; // Add literal to buffer
+    }
   }
 
   if (S->mode == FORWARD_SAT && active) {
