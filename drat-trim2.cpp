@@ -632,7 +632,6 @@ int parse (struct solver* S) {
   S->mem_used   = 0;                  // The number of integers allocated in the DB
   S->delLit     = 0;
 
-  long size;
   long DBsize = S->mem_used + BIGINIT;
   S->DB = (int*) malloc (DBsize * sizeof(int));
   if (S->DB == NULL) { free (buffer); return ERROR; }
@@ -651,7 +650,7 @@ int parse (struct solver* S) {
     hashTable[ i ] = (long*) malloc (sizeof(long) * hashMax[i]); }
 
   bool reading_proof = false;
-  size = 0;
+  long size = 0;
   bool is_eof = false;
   while (1) {
     int lit = 0; tmp = 0;
