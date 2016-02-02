@@ -25,6 +25,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define USE_ZLIB
 #include "zlib.h"
 #include "streambuffer.h"
+#include "time_mem.h"
 
 #include <iostream>
 using std::cout;
@@ -649,6 +650,7 @@ int parse (struct solver* S) {
     hashMax  [ i ] = INIT;
     hashTable[ i ] = (long*) malloc (sizeof(long) * hashMax[i]); }
 
+  double startTime = cpuTime();
   bool reading_proof = false;
   long size = 0;
   bool is_eof = false;
@@ -860,7 +862,7 @@ int parse (struct solver* S) {
   free (hashMax);
   free (buffer);
 
-  printf ("c finished parsing\n");
+  printf ("c finished parsing T: %lf s\n", cpuTime()-startTime);
 //  printf ("c finished parsing. average lifetime of lemmas is %.3f\n", 0);
 
   int n = S->maxVar;
