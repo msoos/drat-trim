@@ -1,6 +1,6 @@
 /************************************************************************************[drat-trim.c]
 Copyright (c) 2014-2015, Marijn Heule and Nathan Wetzler
-Last edit, March 4, 2015
+Copyright (c) 2016, Mate Soos
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 associated documentation files (the "Software"), to deal in the Software without restriction,
