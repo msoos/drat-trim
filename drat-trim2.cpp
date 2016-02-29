@@ -37,7 +37,7 @@ using std::endl;
 #define END         0
 #define UNSAT       0
 #define SAT         1
-#define EXTRA       4
+#define EXTRA       5
 #define INFOBITS    2
 #define ASSUMED     2
 #define MARK        3
@@ -46,6 +46,7 @@ using std::endl;
 #define ID         -1
 #define PIVOT      -2
 #define MYID       -3
+#define USED       -4
 
 #define FORWARD_SAT      10
 #define FORWARD_UNSAT    20
@@ -142,6 +143,7 @@ static inline void markClause (struct solver* S, int* clause, int index) {
       S->dependencies = realloc(S->dependencies, sizeof(int) * S->maxDependencies); }
     S->dependencies[S->nDependencies++] = clause[index - 1] >> 1; }
 
+  clause[index + USED]++;
   if ((clause[index - 1] & ACTIVE) == 0) {
     S->MARKcount++;
     clause[index - 1] |= ACTIVE;
@@ -271,14 +273,18 @@ void printProof (struct solver *S) {
 */
 
 // NB: not yet working with forward checking
+  int last = 0;
   if (S->lemmaFile) {
     S->delinfo--;
     while (*S->delinfo) {
       int offset = *S->delinfo--;
-      if (offset & 1) fprintf (S->lemmaFile, "d ");
       int *lemmas = S->DB + (offset >> 1);
+      if (offset & 1) fprintf (S->lemmaFile, "d ");
+      else last = lemmas[MYID];
+
       int reslit = lemmas[PIVOT];
       int myid   = lemmas[MYID];
+      int used   = lemmas[USED];
       while (*lemmas) {
         int lit = *lemmas++;
         if (lit == reslit) fprintf (S->lemmaFile, "%i ", lit); }
@@ -286,7 +292,7 @@ void printProof (struct solver *S) {
       while (*lemmas) {
         int lit = *lemmas++;
         if (lit != reslit) fprintf (S->lemmaFile, "%i ", lit); }
-      fprintf (S->lemmaFile, "0 %i\n", myid); }
+      fprintf (S->lemmaFile, "0 %i %i %i\n", myid, last, used); }
     fprintf (S->lemmaFile, "0\n");
     fclose (S->lemmaFile); } }
 
@@ -761,7 +767,6 @@ int parse (struct solver* S) {
       int myid = 0;
       if (reading_proof) {
           if (!del) {
-              //tmp = fscanf (S->proofFile, " %i ", &myid);
               bool ret = S->proofstream->parseInt(myid, S->proof_line_num, true);
               assert(ret);
               if (lit == std::numeric_limits<int32_t>::max())
