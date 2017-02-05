@@ -79,7 +79,7 @@ struct solver {
         prep      = 0;
         mode      = BACKWARD_UNSAT;
         use_delete    = 1;
-        gettimeofday(&S.start_time, NULL);
+        gettimeofday(&start_time, NULL);
     }
 
     FILE* coreFile;
