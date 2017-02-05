@@ -399,23 +399,28 @@ void printProof(struct solver *S) {
         S->delinfo--;
         while (*S->delinfo) {
             int offset = *S->delinfo--;
-            int *lemmas = S->DB + (offset >> 1);
+
+            int *clause = S->DB + (offset >> 1);
             if (offset & 1)
                 fprintf(S->lemmaFile, "d ");
             else
-                last = lemmas[MYID];
+                last = clause[MYID];
 
-            int reslit = lemmas[PIVOT];
-            int myid = lemmas[MYID];
-            int used = lemmas[USED];
-            while (*lemmas) {
-                int lit = *lemmas++;
+            int reslit = clause[PIVOT];
+            int myid = clause[MYID];
+            int used = clause[USED];
+
+            //print resolution literal
+            while (*clause) {
+                int lit = *clause++;
                 if (lit == reslit)
                     fprintf(S->lemmaFile, "%i ", lit);
             }
-            lemmas = S->DB + (offset >> 1);
-            while (*lemmas) {
-                int lit = *lemmas++;
+
+            //print non-resolution literals
+            clause = S->DB + (offset >> 1);
+            while (*clause) {
+                int lit = *clause++;
                 if (lit != reslit)
                     fprintf(S->lemmaFile, "%i ", lit);
             }
