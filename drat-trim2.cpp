@@ -178,7 +178,7 @@ void analyze (struct solver* S, int* clause, int index) {     // Mark all clause
 
   S->processed = S->assigned = S->forced; }
 
-int propagate (struct solver* S, int init) {        // Performs unit propagation
+int propagate (struct solver* S) {        // Performs unit propagation
   int *start[2], check = 0, mode = !S->prep;
   int i, lit, _lit = 0; long *watch, *_watch;
   start[0] = start[1] = S->processed;
@@ -225,13 +225,13 @@ static inline int propagateUnits (struct solver* S, int init) {
     S->reason[abs(lit)] = S->unitStack[i] + 1;
     ASSIGN (lit); }
 
-  if (propagate (S, init) == UNSAT) { return UNSAT; }
+  if (propagate (S) == UNSAT) { return UNSAT; }
   S->forced = S->processed;
   return SAT; }
 
 // Put falsified literals at the end and returns the size under the current
 // assignment: negative size means satisfied, size = 0 means falsified
-int sortSize (struct solver *S, int *lemma, int diff) {
+int sortSize (struct solver *S, int *lemma) {
   unsigned int size = 0, last = 0, sat = 1;
   while (lemma[ last ]) {
     int lit = lemma[ last++ ];
@@ -243,7 +243,7 @@ int sortSize (struct solver *S, int *lemma, int diff) {
 
 // print the core clauses to coreFile in DIMACS format
 void printCore (struct solver *S) {
-  int i, j;
+  int i;
   for (i = 0; i < S->nClauses; i++) {
     int *lemmas = S->DB + (S->adlist[i] >> INFOBITS);
     if (lemmas[ID] & ACTIVE) S->COREcount++; }
@@ -353,7 +353,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int uni) {
   for (i = 0; i < size; ++i) { ASSUME(-clause[i]); }
 
   S->current = clause;
-  if (propagate (S, 0) == UNSAT) {
+  if (propagate (S) == UNSAT) {
     indegree = S->arcs - indegree;
     if (indegree <= 2 && S->prep == 0) {
       S->prep = 1; if (S->verb) printf("c [%li] preprocessing checking mode on\n", S->time); }
@@ -412,7 +412,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int uni) {
     while (*candidate) { int lit = *candidate++;
       if (lit != -reslit && !S->is_false[lit]) {
         ASSIGN(-lit); S->reason[abs(lit)] = 0; } }
-    if (propagate (S, 0) == SAT) { flag  = 0; break; } }
+    if (propagate (S) == SAT) { flag  = 0; break; } }
 
   S->processed = S->forced = savedForced;
   while (S->forced < S->assigned) S->is_false[*(--S->assigned)] = 0;
@@ -476,7 +476,7 @@ int verify (struct solver *S) {
       if (S->mode == FORWARD_UNSAT) continue;
       if (S->mode == BACKWARD_UNSAT) continue; }
 
-    int size = sortSize (S, lemmas, -2 * d + 1); // after removal of watches
+    int size = sortSize (S, lemmas); // after removal of watches
 
     if (d && S->mode == FORWARD_SAT) {
       if (size == -1) propagateUnits (S, 0);  // necessary?
@@ -485,7 +485,7 @@ int verify (struct solver *S) {
 
     if (d == 0 && S->mode == FORWARD_UNSAT) {
       if (redundancyCheck (S, lemmas, size, 0) == FAILED) return SAT;
-      size = sortSize (S, lemmas, -2 * d + 1);
+      size = sortSize (S, lemmas);
       S->nDependencies = 0; }
 
     if (lemmas[1])
@@ -495,7 +495,7 @@ int verify (struct solver *S) {
     if (size == 1) {
       if (S->verb) printf("c found unit %i\n", lemmas[0]);
       ASSIGN (lemmas[0]); S->reason[abs(lemmas[0])] = ((long) ((lemmas)-S->DB)) + 1;
-      if (propagate (S, 1) == UNSAT) goto start_verification;
+      if (propagate (S) == UNSAT) goto start_verification;
       S->forced = S->processed; } }
 
   if (S->mode == FORWARD_SAT && active == 0) {
@@ -536,7 +536,7 @@ int verify (struct solver *S) {
           unassignUnit (S, clause[0]); } }
       else unassignUnit (S, clause[0]); }
 
-    int size = sortSize (S, clause, 2 * d - 1); // check the diff
+    int size = sortSize (S, clause); // check the diff
 
     if (d) {
       if (S->verb) { printf("c adding clause (%i) ", size); printClause(clause); }
