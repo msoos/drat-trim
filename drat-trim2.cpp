@@ -194,7 +194,7 @@ static inline void markClause(struct solver *S, int *clause, int index) {
     if (S->traceFile) {
         if (S->nDependencies == S->maxDependencies) {
             S->maxDependencies = (S->maxDependencies * 3) >> 1;
-            S->dependencies =
+            S->dependencies = (int*)
                 realloc(S->dependencies, sizeof(int) * S->maxDependencies);
         }
         S->dependencies[S->nDependencies++] = clause[index - 1] >> 1;
@@ -561,7 +561,7 @@ int redundancyCheck(struct solver *S, int *clause, int size, int uni) {
                 if (blocked == 0 && flag == 1) {
                     if (numCandidates == S->maxCandidates) {
                         S->maxCandidates = (S->maxCandidates * 3) >> 1;
-                        S->resolutionCandidates =
+                        S->resolutionCandidates = (int*)
                             realloc(S->resolutionCandidates,
                                     sizeof(int) * S->maxCandidates);
                     }
