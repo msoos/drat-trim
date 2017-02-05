@@ -100,8 +100,8 @@ struct solver {
 
 };
 
-#define ASSUME(a)	{ S->is_false[-(a)] = ASSUMED; *(S->assigned++) = -(a); S->reason[abs(a)] = 0; }
-#define ASSIGN(a)	{ S->is_false[-(a)] = 1; *(S->assigned++) = -(a); }
+#define ASSUME(a)    { S->is_false[-(a)] = ASSUMED; *(S->assigned++) = -(a); S->reason[abs(a)] = 0; }
+#define ASSIGN(a)    { S->is_false[-(a)] = 1; *(S->assigned++) = -(a); }
 #define ADD_WATCH(l,m)  { if (S->used[(l)] + 1 == S->max[(l)]) { S->max[(l)] *= 1.5; \
                             S->wlist[(l)] = (long *) realloc(S->wlist[(l)], sizeof(long) * S->max[(l)]); } \
                           S->wlist[(l)][ S->used[(l)]++ ] = (m); S->wlist[(l)][ S->used[(l)] ] = END; }
@@ -203,7 +203,7 @@ int propagate (struct solver* S) {        // Performs unit propagation
     while (*watch != END) {                         // While there are watched clauses (watched by lit)
      if ((*watch & mode) != check) {
         watch++; continue; }
-     int *clause = S->DB + (*watch >> 1);	    // Get the clause from DB
+     int *clause = S->DB + (*watch >> 1);        // Get the clause from DB
      if (S->is_false[ -clause[0] ] ||
          S->is_false[ -clause[1] ]) {
        watch++; continue; }
@@ -226,7 +226,7 @@ int propagate (struct solver* S) {        // Performs unit propagation
       next_clause: ; } }                            // Set position for next clause
   if (check) goto flip_check;
   S->processed = S->assigned;
-  return SAT; }	                                    // Finally, no conflict was found
+  return SAT; }                                        // Finally, no conflict was found
 
 static inline int propagateUnits (struct solver* S, int init) {
   int i;
@@ -397,10 +397,10 @@ int redundancyCheck (struct solver *S, int *clause, int size, int uni) {
         int flag = 0;
         blocked = 0;
         reason = 0;
-	while (*watchedClause) {
+    while (*watchedClause) {
           int lit = *watchedClause++;
           if (lit == -reslit) flag = 1;
-	  else if (S->is_false[-lit]) { // Unless some other literal is satisfied
+      else if (S->is_false[-lit]) { // Unless some other literal is satisfied
             if (blocked == 0 || reason > S->reason[ abs(lit) ])
               blocked = lit, reason = S->reason[ abs(lit) ]; } }
 
@@ -409,11 +409,10 @@ int redundancyCheck (struct solver *S, int *clause, int size, int uni) {
 
        // If resolution candidate, add to list
        if (blocked == 0 && flag == 1) {
-	 if (numCandidates == S->maxCandidates) {
-	   S->maxCandidates = (S->maxCandidates * 3) >> 1;
-	    S->resolutionCandidates = realloc(S->resolutionCandidates,
-	    			      sizeof(int) * S->maxCandidates); }
-	    S->resolutionCandidates[numCandidates++] = S->wlist[i][j] >> 1; } } } }
+     if (numCandidates == S->maxCandidates) {
+       S->maxCandidates = (S->maxCandidates * 3) >> 1;
+        S->resolutionCandidates = realloc(S->resolutionCandidates, sizeof(int) * S->maxCandidates); }
+        S->resolutionCandidates[numCandidates++] = S->wlist[i][j] >> 1; } } } }
 
   // Check all candidates for RUP
   int flag = 1;
@@ -911,7 +910,7 @@ int parse (struct solver* S) {
 
   for (i = 1; i <= n; ++i) { S->reason    [i]           =    0;
                              S->falseStack[i]           =    0;
-	                     S->is_false[i] = S->is_false[-i] =    0;
+                         S->is_false[i] = S->is_false[-i] =    0;
                              S->used [i] = S->used [-i] =    0;
                              S->max  [i] = S->max  [-i] = INIT; }
 
