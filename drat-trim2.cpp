@@ -22,6 +22,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/time.h>
+#include <unistd.h>
+
 #define USE_ZLIB
 #include "zlib.h"
 #include "streambuffer.h"
@@ -68,7 +70,9 @@ struct solver {
         , nClauses(-1)
     {}
 
-    FILE *coreFile, *lemmaFile, *traceFile;
+    FILE* coreFile;
+    FILE* lemmaFile;
+    FILE* traceFile;
     gzFile inputFile;
     gzFile proofFile;
     size_t input_line_num;
@@ -913,20 +917,20 @@ int parse (struct solver* S) {
       printf ("c formula contains empty clause\n");
       if (S->coreFile) {
         fprintf (S->coreFile, "p cnf 0 1\n 0\n");
-        close (S->coreFile); }
+        fclose (S->coreFile); }
       if (S->lemmaFile) {
         fprintf (S->lemmaFile, "0\n");
-        close (S->lemmaFile); }
+        fclose (S->lemmaFile); }
       return UNSAT; }
     if (clause[1]) { addWatch (S, clause, 0); addWatch (S, clause, 1); }
     else if (S->is_false[  clause[0] ]) {
       printf ("c found complementary unit clauses\n");
       if (S->coreFile) {
         fprintf (S->coreFile, "p cnf %i 2\n%i 0\n%i 0\n", abs(clause[0]), clause[0], -clause[0]);
-        close (S->coreFile); }
+        fclose (S->coreFile); }
       if (S->lemmaFile) {
         fprintf (S->lemmaFile, "0\n");
-        close (S->lemmaFile); }
+        fclose (S->lemmaFile); }
       return UNSAT; }
     else if (!S->is_false[ -clause[0] ]) {
       addUnit (S, (long) (clause - S->DB));
