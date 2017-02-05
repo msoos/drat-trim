@@ -68,7 +68,19 @@ struct solver {
     solver() :
         nVars(-1)
         , nClauses(-1)
-    {}
+    {
+        inputFile = NULL;
+        coreFile  = NULL;
+        lemmaFile = NULL;
+        traceFile = NULL;
+        timeout   = TIMEOUT;
+        mask      = 0;
+        verb      = 0;
+        prep      = 0;
+        mode      = BACKWARD_UNSAT;
+        use_delete    = 1;
+        gettimeofday(&S.start_time, NULL);
+    }
 
     FILE* coreFile;
     FILE* lemmaFile;
@@ -972,18 +984,6 @@ void printHelp ( ) {
 
 int main (int argc, char** argv) {
   struct solver S;
-
-  S.inputFile = NULL;
-  S.coreFile  = NULL;
-  S.lemmaFile = NULL;
-  S.traceFile = NULL;
-  S.timeout   = TIMEOUT;
-  S.mask      = 0;
-  S.verb      = 0;
-  S.prep      = 0;
-  S.mode      = BACKWARD_UNSAT;
-  S.use_delete    = 1;
-  gettimeofday(&S.start_time, NULL);
 
   int i, tmp = 0;
   for (i = 1; i < argc; i++) {
