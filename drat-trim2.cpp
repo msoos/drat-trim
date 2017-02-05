@@ -312,7 +312,7 @@ flip_check:
     return SAT;
 } // Finally, no conflict was found
 
-static inline int propagateUnits(struct solver *S, int init) {
+static inline int propagateUnits(struct solver *S) {
     int i;
     while (S->forced > S->falseStack) {
         S->is_false[*(--S->forced)] = 0;
@@ -473,7 +473,7 @@ void printDependencies(struct solver *S, int *clause) {
     }
 }
 
-int redundancyCheck(struct solver *S, int *clause, int size, int uni) {
+int redundancyCheck(struct solver *S, int *clause, int size) {
     int i, indegree;
     if (S->verb) {
         printf("c checking lemma (%i, %i) ", size, clause[PIVOT]);
@@ -620,7 +620,7 @@ int verify(struct solver *S) {
 
     S->nDependencies = 0;
     S->time = S->count; // Alternative time init
-    if (propagateUnits(S, 1) == UNSAT) {
+    if (propagateUnits(S) == UNSAT) {
         printf("c UNSAT via unit propagation on the input instance\n");
         printDependencies(S, NULL);
         postprocess(S);
@@ -651,7 +651,7 @@ int verify(struct solver *S) {
             if (d) {
                 if (S->mode == FORWARD_SAT) {
                     removeUnit(S, lit);
-                    propagateUnits(S, 0);
+                    propagateUnits(S);
                 } else { // no need to remove units while checking UNSAT
                     S->adlist[checked] = 0;
                     continue;
@@ -673,7 +673,7 @@ int verify(struct solver *S) {
                     S->adlist[checked] = 0;
                 } else if (S->mode == FORWARD_SAT) {
                     removeWatch(S, lemmas, 0), removeWatch(S, lemmas, 1);
-                    propagateUnits(S, 0);
+                    propagateUnits(S);
                 }
             } else {
                 removeWatch(S, lemmas, 0), removeWatch(S, lemmas, 1);
@@ -688,14 +688,14 @@ int verify(struct solver *S) {
 
         if (d && S->mode == FORWARD_SAT) {
             if (size == -1)
-                propagateUnits(S, 0); // necessary?
-            if (redundancyCheck(S, lemmas, size, 0) == FAILED)
+                propagateUnits(S); // necessary?
+            if (redundancyCheck(S, lemmas, size) == FAILED)
                 return SAT;
             continue;
         }
 
         if (d == 0 && S->mode == FORWARD_UNSAT) {
-            if (redundancyCheck(S, lemmas, size, 0) == FAILED)
+            if (redundancyCheck(S, lemmas, size) == FAILED)
                 return SAT;
             size = sortSize(S, lemmas);
             S->nDependencies = 0;
@@ -808,7 +808,7 @@ start_verification:
         if (seconds > S->timeout)
             printf("s TIMEOUT\n"), exit(0);
 
-        if (redundancyCheck(S, clause, size, uni) == FAILED)
+        if (redundancyCheck(S, clause, size) == FAILED)
             return SAT;
         if (S->lemmaFile)
             *(S->delinfo++) = (ad >> INFOBITS) << 1;
