@@ -45,6 +45,8 @@ using std::endl;
 #define MARK 3
 #define ERROR -1
 #define ACTIVE 1
+
+//lemma structure
 #define ID -1
 #define PIVOT -2
 #define MYID -3
@@ -215,8 +217,8 @@ static inline void markClause(struct solver *S, int *clause, int index) {
         S->is_false[*(clause++)] = MARK;
 }
 
-void analyze(struct solver *S, int *clause,
-             int index) { // Mark all clauses involved in conflict
+// Mark all clauses involved in conflict
+void analyze(struct solver *S, int *clause, int index) {
     markClause(S, clause, index);
     while (S->assigned > S->falseStack) {
         int lit = *(--S->assigned);
@@ -417,6 +419,7 @@ void printProof(struct solver *S) {
                 if (lit != reslit)
                     fprintf(S->lemmaFile, "%i ", lit);
             }
+            // Lemma format: "0 ID last_used number_times_used"
             fprintf(S->lemmaFile, "0 %i %i %i\n", myid, last, used);
         }
         fprintf(S->lemmaFile, "0\n");
