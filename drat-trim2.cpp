@@ -942,6 +942,11 @@ int parse(struct solver *S) {
         tmp = 0;
         reading_proof = nZeros <= 0;
 
+        if (S->inputstream->operator*() == 'c') {
+            S->inputstream->skipLine();
+            continue;
+        }
+
         if (size == 0) {
             if (!reading_proof) {
                 S->inputstream->skipWhitespace();
