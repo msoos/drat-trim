@@ -24,8 +24,11 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <sys/time.h>
 #include <unistd.h>
 
-#define USE_ZLIB
-#include "zlib.h"
+
+#ifdef USE_ZLIB
+#include <zlib.h>
+#endif
+
 #include "streambuffer.h"
 #include "time_mem.h"
 
@@ -83,8 +86,13 @@ struct solver {
     FILE *coreFile;
     FILE *lemmaFile;
     FILE *traceFile;
+    #ifdef USE_ZLIB
     gzFile inputFile;
     gzFile proofFile;
+    #else
+    FILE* inputFile;
+    FILE* proofFile;
+    #endif
     size_t input_line_num;
     size_t proof_line_num;
     int *DB, nVars, timeout, mask, use_delete, *falseStack, *is_false, *forced,
@@ -1365,7 +1373,11 @@ int main(int argc, char **argv) {
         } else {
             tmp++;
             if (tmp == 1) {
+                #ifdef USE_ZLIB
                 S.inputFile = gzopen(argv[1], "rb");
+                #else
+                S.inputFile = fopen(argv[1], "rb");
+                #endif
                 if (S.inputFile == NULL) {
                     printf("c error opening \"%s\".\n", argv[i]);
                     return ERROR;
@@ -1374,7 +1386,11 @@ int main(int argc, char **argv) {
                     S.inputFile);
                 S.input_line_num = 0;
             } else if (tmp == 2) {
+                #ifdef USE_ZLIB
                 S.proofFile = gzopen(argv[2], "rb");
+                #else
+                S.proofFile = fopen(argv[2], "rb");
+                #endif
                 if (S.proofFile == NULL) {
                     printf("c error opening \"%s\".\n", argv[i]);
                     return ERROR;
@@ -1393,8 +1409,13 @@ int main(int argc, char **argv) {
 
     int parseReturnValue = parse(&S);
 
+    #ifdef USE_ZLIB
     gzclose(S.inputFile);
     gzclose(S.proofFile);
+    #else
+    fclose(S.inputFile);
+    fclose(S.proofFile);
+    #endif
     int sts = ERROR;
     if (parseReturnValue == ERROR)
         printf("s MEMORY ALLOCATION ERROR\n");
