@@ -26,7 +26,7 @@ SET(CMAKE_CXX_FLAGS_DEBUG "-Wall -O0 -g")
 SET(CMAKE_CXX_FLAGS_RELEASE "-Wall -O3 -g0 -fno-exceptions -DNDEBUG -march=native")
 
 add_executable(drat-trim
-    drat-trim2.cpp
+    drat-trim.cpp
 )
 
 IF (ZLIB_FOUND)
