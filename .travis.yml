@@ -15,7 +15,8 @@ sudo: required
 env:
   matrix:
     - DRAT_CONFIG=ZLIB
-    - DRAT_CONFIG=NO_ZLIB
+    - DRAT_CONFIG=NOZLIB
+    - DRAT_CONFIG=INTREE_BUILD
 
 before_install:
   - sudo apt-get update

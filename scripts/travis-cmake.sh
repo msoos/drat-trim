@@ -30,17 +30,15 @@ BUILD_DIR=$(pwd)
 # Note eval is needed so COMMON_CMAKE_ARGS is expanded properly
 case $DRAT_CONFIG in
     ZLIB)
-        sudo apt-get -y install zlib1g-dev
         eval cmake "${SOURCE_DIR}"
     ;;
 
     NOZLIB)
-        sudo apt-get remove -y zlib1g-dev
+        sudo apt-get remove -y zlib1g-dev zlib1g
         eval cmake "${SOURCE_DIR}"
     ;;
 
     INTREE_BUILD)
-        sudo apt-get -y install zlib1g-dev
         cd ..
         SOURCE_DIR=$(pwd)
         BUILD_DIR=$(pwd)
