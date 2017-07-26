@@ -64,10 +64,6 @@ using std::endl;
 #define CANDIDATE_INIT_SIZE 10
 #define DEPENDENCIES_INIT_SIZE 10
 
-size_t gz_read(void *buf, size_t num, size_t count, gzFile f) {
-    return gzread(f, buf, num * count);
-}
-
 struct solver {
     solver() : nVars(-1), nClauses(-1) {
         inputFile = NULL;
@@ -103,8 +99,13 @@ struct solver {
     struct timeval start_time;
     long mem_used, time, nClauses, lastLemma, *unitStack, *reason, lemmas, arcs,
         *adlist, **wlist;
-    StreamBuffer<gzFile, fread_op_zip, gz_read> *inputstream;
-    StreamBuffer<gzFile, fread_op_zip, gz_read> *proofstream;
+    #ifndef USE_ZLIB
+    StreamBuffer<FILE*, FN> *inputstream;
+    StreamBuffer<FILE*, FN> *proofstream;
+    #else
+    StreamBuffer<gzFile, GZ> *inputstream;
+    StreamBuffer<gzFile, GZ> *proofstream;
+    #endif
 };
 
 #define ASSUME(a)                                                              \
@@ -1027,14 +1028,12 @@ int parse(struct solver *S) {
             if (!reading_proof) {
                 // if (fgets (ignore, sizeof(ignore), S->inputFile) == NULL)
                 // printf("c\n");
-                if (S->inputstream->skipLine()) {
-                }
+                S->inputstream->skipLine();
                 // printf("c\n");
             } else {
                 // if (fgets (ignore, sizeof(ignore), S->proofFile) == NULL)
                 // printf("c\n");
-                if (S->inputstream->skipLine()) {
-                }
+                S->inputstream->skipLine();
                 // printf("c\n");
             }
 
@@ -1382,8 +1381,14 @@ int main(int argc, char **argv) {
                     printf("c error opening \"%s\".\n", argv[i]);
                     return ERROR;
                 }
-                S.inputstream = new StreamBuffer<gzFile, fread_op_zip, gz_read>(
-                    S.inputFile);
+
+                #ifdef USE_ZLIB
+                S.inputstream =
+                new StreamBuffer<gzFile, GZ>(S.inputFile);
+                #else
+                S.inputstream =
+                    new StreamBuffer<FILE*, FN>(S.inputFile);
+                #endif
                 S.input_line_num = 0;
             } else if (tmp == 2) {
                 #ifdef USE_ZLIB
@@ -1395,10 +1400,16 @@ int main(int argc, char **argv) {
                     printf("c error opening \"%s\".\n", argv[i]);
                     return ERROR;
                 }
+
+                #ifdef USE_ZLIB
+                S.proofstream =
+                    new StreamBuffer<gzFile, GZ>(S.proofFile);
+                #else
+                S.proofstream =
+                    new StreamBuffer<FILE*, FN>(S.proofFile);
+                #endif
+                S.proof_line_num = 0;
             }
-            S.proofstream =
-                new StreamBuffer<gzFile, fread_op_zip, gz_read>(S.proofFile);
-            S.proof_line_num = 0;
         }
     }
 
