@@ -34,7 +34,7 @@ case $DRAT_CONFIG in
     ;;
 
     NOZLIB)
-        sudo apt-get remove -y zlib1g-dev zlib1g
+        sudo apt-get remove zlib1g-dev zlib1g
         eval cmake "${SOURCE_DIR}"
     ;;
 
