@@ -19,12 +19,18 @@ env:
     - DRAT_CONFIG=INTREE_BUILD
 
 before_install:
-  - sudo apt-get update
-  - sudo apt-get install software-properties-common
-  - sudo add-apt-repository ppa:george-edison55/cmake-3.x -y
-  - sudo apt-get update
-  - sudo sudo apt-get upgrade cmake
-  - cmake --version
+    - sudo apt-get -y update
+    - sudo apt-get -y install language-pack-en-base
+    - sudo dpkg-reconfigure locales
+    - sudo apt-get -y install software-properties-common
+
+    #- sudo add-apt-repository "deb http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.7 main"
+    #- wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key | sudo apt-key add -
+    - sudo apt-get -y update
+    #- sudo apt-get -y install llvm-3.7-dev
+
+    - sudo apt-get -y update
+    - sudo apt-get -y install build-essential git cmake
 
 install:
   - sudo apt-get install -y --force-yes libboost-test-dev
