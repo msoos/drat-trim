@@ -5,14 +5,15 @@ compiler:
 
 os:
   - linux
-  addons:
-    apt:
-        sources:
-        - george-edison55-trusty-backports
-        packages:
-        - cmake
-        - cmake-data
 #  - osx
+
+addons:
+  apt:
+    sources:
+      - george-edison55-trusty-backports
+    packages:
+      - cmake
+      - cmake-data
 
 dist: trusty
 
