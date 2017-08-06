@@ -29,7 +29,8 @@ env:
 before_install:
   - sudo apt-get update
   - sudo apt-get install software-properties-common
-  - cmake --version
+
+# install new cmake
   - wget http://www.cmake.org/files/v3.4/cmake-3.4.1.tar.gz
   - tar -xzf cmake-3.4.1.tar.gz
   - cd cmake-3.4.1/
@@ -38,6 +39,7 @@ before_install:
   - sudo make install
   - sudo update-alternatives --install /usr/bin/cmake cmake /usr/local/bin/cmake 1 --force
   - cmake --version
+  - cd ..
 
 install:
   - sudo apt-get install -y --force-yes libboost-test-dev
