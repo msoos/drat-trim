@@ -23,15 +23,17 @@ THE SOFTWARE.
 
 #ifndef TIME_MEM_H
 #define TIME_MEM_H
-#include "assert.h"
+#include <cassert>
+#include <time.h>
 
-#include <unistd.h>
 #include <ios>
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <signal.h>
 
-#if defined (_MSC_VER) || defined(CROSS_COMPILE)
+// note: MinGW64 defines both __MINGW32__ and __MINGW64__
+#if defined (_MSC_VER) || defined (__MINGW32__)
 #include <ctime>
 static inline double cpuTime(void)
 {
@@ -70,21 +72,7 @@ static inline double cpuTimeTotal(void)
     return (double)ru.ru_utime.tv_sec + (double)ru.ru_utime.tv_usec / 1000000.0;
 }
 
-static inline double realTime()
-{
-    struct timeval start;
-
-    long seconds, useconds;
-
-    gettimeofday(&start, NULL);
-
-    seconds  = start.tv_sec;
-    useconds = start.tv_usec;
-
-    return ((double)(seconds + useconds))/(1000.0*1000.0);
-}
-
-#endif //CROSS_COMPILE
+#endif
 
 #if defined(__linux__)
 // process_mem_usage(double &, double &) - takes two doubles by reference,
@@ -92,15 +80,14 @@ static inline double realTime()
 // size and resident set size, and return the results in KB.
 //
 // On failure, returns 0.0, 0.0
-static inline long unsigned int memUsedTotal(double& vm_usage)
+static inline uint64_t memUsedTotal(double& vm_usage)
 {
-   //double& vm_usage, double& resident_set
+   //double& vm_usage
    using std::ios_base;
    using std::ifstream;
    using std::string;
 
    vm_usage     = 0.0;
-   double resident_set = 0.0;
 
    // 'file' stat seems to give the most reliable results
    //
@@ -127,7 +114,7 @@ static inline long unsigned int memUsedTotal(double& vm_usage)
 
    long page_size_kb = sysconf(_SC_PAGE_SIZE); // in case x86-64 is configured to use 2MB pages
    vm_usage     = vsize;
-   resident_set = (double)rss * (double)page_size_kb;
+   double resident_set = (double)rss * (double)page_size_kb;
 
    return resident_set;
 }
