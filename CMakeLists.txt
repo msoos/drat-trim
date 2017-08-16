@@ -15,6 +15,9 @@ PROJECT(drat-trim)
 
 find_package(ZLIB)
 IF (ZLIB_FOUND)
+    MESSAGE(STATUS "OK, Found ZLIB!")
+    include_directories(${ZLIB_INCLUDE_DIR})
+    link_directories(${ZLIB_LIB_DIR})
     add_definitions( -DUSE_ZLIB )
 endif()
 
