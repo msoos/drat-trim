@@ -75,7 +75,7 @@ struct solver {
         prep = 0;
         mode = BACKWARD_UNSAT;
         use_delete = 1;
-        gettimeofday(&start_time, NULL);
+        start_time = cpuTime();
     }
 
     FILE *coreFile;
@@ -95,7 +95,7 @@ struct solver {
         RATcount, MARKcount, Lcount, maxCandidates, *resolutionCandidates,
         maxDependencies, nDependencies, *dependencies, maxVar, mode, verb,
         unitSize, prep, *current, delLit; // depth, maxdepth;
-    struct timeval start_time;
+    double start_time;
     long mem_used, time, nClauses, lastLemma, *unitStack, *reason, lemmas, arcs,
         *adlist, **wlist;
     #ifndef USE_ZLIB
@@ -817,9 +817,7 @@ start_verification:
             printClause(clause);
         }
 
-        struct timeval current_time;
-        gettimeofday(&current_time, NULL);
-        int seconds = (int)(current_time.tv_sec - S->start_time.tv_sec);
+        int seconds = cpuTime() - S->start_time;
         if (seconds > S->timeout)
             printf("s TIMEOUT\n"), exit(0);
 
