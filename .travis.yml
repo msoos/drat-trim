@@ -1,7 +1,9 @@
 language: cpp
+cache: ccache
+
 compiler:
   - gcc
-#- clang
+  - clang
 
 os:
   - linux
