@@ -21,21 +21,10 @@ env:
 before_install:
   - sudo apt-get update
   - sudo apt-get install -y --force-yes libboost-test-dev
-  - sudo apt-get install -y --force-yes cmake valgrind swig3.0
+  - sudo apt-get install -y --force-yes cmake3 valgrind swig3.0
   - sudo apt-get install -y zlib1g-dev
 
 install:
-  # install new cmake
-  - wget http://www.cmake.org/files/v3.4/cmake-3.4.1.tar.gz
-  - tar -xzf cmake-3.4.1.tar.gz
-  - cd cmake-3.4.1/
-  - ./configure
-  - make > cmake_build_out.txt
-  - sudo make install > cmake_install_out.txt
-  - sudo update-alternatives --install /usr/bin/cmake cmake /usr/local/bin/cmake 1 --force
-  - cmake --version
-  - cd ..
-
 #bulid dir
   - mkdir -p build
 
