@@ -33,7 +33,7 @@ THE SOFTWARE.
 #include <signal.h>
 
 // note: MinGW64 defines both __MINGW32__ and __MINGW64__
-#if defined (_MSC_VER) || defined (__MINGW32__)
+#if defined (_MSC_VER) || defined (__MINGW32__) || defined(_WIN32)
 #include <ctime>
 static inline double cpuTime(void)
 {
@@ -58,7 +58,9 @@ static inline double cpuTime(void)
     int ret = getrusage(RUSAGE_SELF, &ru);
     #endif
 
-    assert(ret == 0);
+    if (ret != 0) {
+        return 0;
+    }
 
     return (double)ru.ru_utime.tv_sec + (double)ru.ru_utime.tv_usec / 1000000.0;
 }
