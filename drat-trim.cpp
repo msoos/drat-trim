@@ -741,11 +741,13 @@ int verify(struct solver *S) {
 
     if (S->mode == BACKWARD_UNSAT) {
         printf("c ERROR: no conflict\n");
+        exit(-1);
         return SAT;
     }
 
     if (S->mode == FORWARD_UNSAT) {
         printf("c ERROR: all lemmas verified, but no conflict\n");
+        exit(-1);
         return SAT;
     }
 
@@ -763,7 +765,7 @@ start_verification:
 
     if (S->mode == FORWARD_SAT) {
         printf("c ERROR: found empty clause during SAT check\n");
-        exit(0);
+        exit(-1);
     }
     printf(
         "c detected empty clause; start verification via backward checking\n");
@@ -818,8 +820,10 @@ start_verification:
         }
 
         int seconds = cpuTime() - S->start_time;
-        if (seconds > S->timeout)
-            printf("s TIMEOUT\n"), exit(0);
+        if (seconds > S->timeout) {
+            printf("s TIMEOUT\n");
+            exit(-1);
+        }
 
         if (redundancyCheck(S, clause, size) == FAILED)
             return SAT;
@@ -1053,7 +1057,6 @@ int parse(struct solver *S) {
         // input cannot contain literal that is larger than declared in header
         if (abs(lit) > S->nVars && !reading_proof) {
             printf("c illegal literal %i due to max var %i\n", lit, S->nVars);
-            assert(0);
             exit(-1);
         }
 
@@ -1067,7 +1070,6 @@ int parse(struct solver *S) {
                     assert(ret);
                     if (lit == std::numeric_limits<int32_t>::max()) {
                         std::cerr << "ID missing!" << endl;
-                        assert(false);
                         exit(-1);
                     }
                 }
@@ -1099,7 +1101,7 @@ int parse(struct solver *S) {
                         //              if (count) break;
                         printf("c MATCHING ERROR: ");
                         printClause(buffer);
-                        exit(0);
+                        exit(-1);
                     }
                     if (S->mode == FORWARD_SAT)
                         S->DB[match - 2] = rem;
@@ -1375,7 +1377,8 @@ int main(int argc, char **argv) {
                 S.inputFile = fopen(argv[1], "rb");
                 #endif
                 if (S.inputFile == NULL) {
-                    printf("c error opening \"%s\".\n", argv[i]);
+                    printf("c ERROR opening \"%s\".\n", argv[i]);
+                    exit(-1);
                     return ERROR;
                 }
 
@@ -1394,8 +1397,8 @@ int main(int argc, char **argv) {
                 S.proofFile = fopen(argv[2], "rb");
                 #endif
                 if (S.proofFile == NULL) {
-                    printf("c error opening \"%s\".\n", argv[i]);
-                    return ERROR;
+                    printf("c ERROR opening \"%s\".\n", argv[i]);
+                    exit(-1);
                 }
 
                 #ifdef USE_ZLIB
@@ -1425,14 +1428,18 @@ int main(int argc, char **argv) {
     fclose(S.proofFile);
     #endif
     int sts = ERROR;
-    if (parseReturnValue == ERROR)
+    if (parseReturnValue == ERROR) {
         printf("s MEMORY ALLOCATION ERROR\n");
+        exit(-1);
+    }
     else if (parseReturnValue == UNSAT)
         printf("c trivial UNSAT\ns VERIFIED\n");
     else if ((sts = verify(&S)) == UNSAT)
         printf("s VERIFIED\n");
-    else
+    else {
         printf("s NOT VERIFIED\n");
+        exit(-1);
+    }
     freeMemory(&S);
     return (sts != UNSAT); // 0 on success, 1 on any failure
 }
