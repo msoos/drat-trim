@@ -912,8 +912,9 @@ int parse(struct solver *S) {
     int nZeros = S->nClauses;
 
     bsize = S->nVars * 2;
-    if ((buffer = (int *)malloc(bsize * sizeof(int))) == NULL)
+    if ((buffer = (int *)malloc(bsize * sizeof(int))) == NULL) {
         return ERROR;
+    }
 
     S->count = 1;
     S->lastLemma = 0;
