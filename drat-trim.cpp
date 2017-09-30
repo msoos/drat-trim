@@ -2,27 +2,28 @@
 Copyright (c) 2014-2015, Marijn Heule and Nathan Wetzler
 Copyright (c) 2016, Mate Soos
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction,
-including without limitation the rights to use, copy, modify, merge, publish, distribute,
-sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all copies or
-substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
-NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
-OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include <cstdio>
-#include <cstdlib>
 #include <cassert>
 #include <cstdint>
-
+#include <cstdio>
+#include <cstdlib>
 
 #ifdef USE_ZLIB
 #include <zlib.h>
@@ -48,7 +49,7 @@ using std::endl;
 #define ERROR -1
 #define ACTIVE 1
 
-//lemma structure
+// lemma structure
 #define ID -1
 #define PIVOT -2
 #define MYID -3
@@ -81,13 +82,13 @@ struct solver {
     FILE *coreFile;
     FILE *lemmaFile;
     FILE *traceFile;
-    #ifdef USE_ZLIB
+#ifdef USE_ZLIB
     gzFile inputFile;
     gzFile proofFile;
-    #else
-    FILE* inputFile;
-    FILE* proofFile;
-    #endif
+#else
+    FILE *inputFile;
+    FILE *proofFile;
+#endif
     size_t input_line_num;
     size_t proof_line_num;
     int *DB, nVars, timeout, mask, use_delete, *falseStack, *is_false, *forced,
@@ -98,35 +99,35 @@ struct solver {
     double start_time;
     long mem_used, time, nClauses, lastLemma, *unitStack, *reason, lemmas, arcs,
         *adlist, **wlist;
-    #ifndef USE_ZLIB
-    StreamBuffer<FILE*, FN> *inputstream;
-    StreamBuffer<FILE*, FN> *proofstream;
-    #else
+#ifndef USE_ZLIB
+    StreamBuffer<FILE *, FN> *inputstream;
+    StreamBuffer<FILE *, FN> *proofstream;
+#else
     StreamBuffer<gzFile, GZ> *inputstream;
     StreamBuffer<gzFile, GZ> *proofstream;
-    #endif
+#endif
 };
 
-#define ASSUME(a)                                                              \
-    {                                                                          \
-        S->is_false[-(a)] = ASSUMED;                                           \
-        *(S->assigned++) = -(a);                                               \
-        S->reason[abs(a)] = 0;                                                 \
+#define ASSUME(a)                    \
+    {                                \
+        S->is_false[-(a)] = ASSUMED; \
+        *(S->assigned++) = -(a);     \
+        S->reason[abs(a)] = 0;       \
     }
-#define ASSIGN(a)                                                              \
-    {                                                                          \
-        S->is_false[-(a)] = 1;                                                 \
-        *(S->assigned++) = -(a);                                               \
+#define ASSIGN(a)                \
+    {                            \
+        S->is_false[-(a)] = 1;   \
+        *(S->assigned++) = -(a); \
     }
-#define ADD_WATCH(l, m)                                                        \
-    {                                                                          \
-        if (S->used[(l)] + 1 == S->max[(l)]) {                                 \
-            S->max[(l)] *= 1.5;                                                \
-            S->wlist[(l)] =                                                    \
-                (long *)realloc(S->wlist[(l)], sizeof(long) * S->max[(l)]);    \
-        }                                                                      \
-        S->wlist[(l)][S->used[(l)]++] = (m);                                   \
-        S->wlist[(l)][S->used[(l)]] = END;                                     \
+#define ADD_WATCH(l, m)                                                     \
+    {                                                                       \
+        if (S->used[(l)] + 1 == S->max[(l)]) {                              \
+            S->max[(l)] *= 1.5;                                             \
+            S->wlist[(l)] =                                                 \
+                (long *)realloc(S->wlist[(l)], sizeof(long) * S->max[(l)]); \
+        }                                                                   \
+        S->wlist[(l)][S->used[(l)]++] = (m);                                \
+        S->wlist[(l)][S->used[(l)]] = END;                                  \
     }
 
 static inline void printClause(int *clause) {
@@ -204,8 +205,8 @@ static inline void markClause(struct solver *S, int *clause, int index) {
     if (S->traceFile) {
         if (S->nDependencies == S->maxDependencies) {
             S->maxDependencies = (S->maxDependencies * 3) >> 1;
-            S->dependencies = (int*)
-                realloc(S->dependencies, sizeof(int) * S->maxDependencies);
+            S->dependencies = (int *)realloc(S->dependencies,
+                                             sizeof(int) * S->maxDependencies);
         }
         S->dependencies[S->nDependencies++] = clause[index - 1] >> 1;
     }
@@ -260,8 +261,7 @@ int propagate(struct solver *S) { // Performs unit propagation
     int i, lit, _lit = 0;
     long *watch, *_watch;
     start[0] = start[1] = S->processed;
-flip_check:
-    ;
+flip_check:;
     check ^= 1;
     while (start[check] < S->assigned) { // While unprocessed false literals
         lit = *(start[check]++);         // Get first unprocessed literal
@@ -269,7 +269,8 @@ flip_check:
             watch = _watch;
         else
             watch = S->wlist[lit]; // Obtain the first watch pointer
-        while (*watch != END) { // While there are watched clauses (watched by lit)
+        while (*watch !=
+               END) { // While there are watched clauses (watched by lit)
             if ((*watch & mode) != check) {
                 watch++;
                 continue;
@@ -284,8 +285,8 @@ flip_check:
                                         // is in front
             for (i = 2; clause[i]; ++i) // Scan the non-watched literals
                 if (S->is_false[clause[i]] == 0) { // When clause[j] is not
-                                                   // false, it is either true
-                                                   // or unset
+                    // false, it is either true
+                    // or unset
                     clause[1] = clause[i];
                     clause[i] = lit; // Swap literals
                     ADD_WATCH(clause[1],
@@ -298,8 +299,8 @@ flip_check:
             watch++; // Set lit at clause[1] and set next watch
             if (!S->is_false[clause[0]]) { // If the other watched literal is
                                            // falsified,
-                ASSIGN(
-                    clause[0]); // A unit clause is found, and the reason is set
+                ASSIGN(clause[0]); // A unit clause is found, and the reason
+                                   // is set
                 S->reason[abs(clause[0])] = ((long)((clause)-S->DB)) + 1;
                 if (!check) {
                     start[0]--;
@@ -311,8 +312,7 @@ flip_check:
                 analyze(S, clause, 0);
                 return UNSAT;
             } // Found a root level conflict -> UNSAT
-        next_clause:
-            ;
+        next_clause:;
         }
     } // Set position for next clause
     if (check)
@@ -418,14 +418,14 @@ void printProof(struct solver *S) {
             int myid = clause[MYID];
             int used = clause[USED];
 
-            //print resolution literal
+            // print resolution literal
             while (*clause) {
                 int lit = *clause++;
                 if (lit == reslit)
                     fprintf(S->lemmaFile, "%i ", lit);
             }
 
-            //print non-resolution literals
+            // print non-resolution literals
             clause = S->DB + (offset >> 1);
             while (*clause) {
                 int lit = *clause++;
@@ -559,7 +559,8 @@ int redundancyCheck(struct solver *S, int *clause, int size) {
                     int lit = *watchedClause++;
                     if (lit == -reslit)
                         flag = 1;
-                    else if (S->is_false[-lit]) { // Unless some other literal
+                    else if (S->is_false[-lit]) { // Unless some other
+                                                  // literal
                                                   // is
                                                   // satisfied
                         if (blocked == 0 || reason > S->reason[abs(lit)])
@@ -576,9 +577,9 @@ int redundancyCheck(struct solver *S, int *clause, int size) {
                 if (blocked == 0 && flag == 1) {
                     if (numCandidates == S->maxCandidates) {
                         S->maxCandidates = (S->maxCandidates * 3) >> 1;
-                        S->resolutionCandidates = (int*)
-                            realloc(S->resolutionCandidates,
-                                    sizeof(int) * S->maxCandidates);
+                        S->resolutionCandidates =
+                            (int *)realloc(S->resolutionCandidates,
+                                           sizeof(int) * S->maxCandidates);
                     }
                     S->resolutionCandidates[numCandidates++] =
                         S->wlist[i][j] >> 1;
@@ -751,8 +752,7 @@ int verify(struct solver *S) {
         return SAT;
     }
 
-start_verification:
-    ;
+start_verification:;
     if (S->mode == FORWARD_UNSAT) {
         printDependencies(S, NULL);
         postprocess(S);
@@ -835,7 +835,9 @@ start_verification:
     return UNSAT;
 }
 
-int compare(const void *a, const void *b) { return (*(int *)a - *(int *)b); }
+int compare(const void *a, const void *b) {
+    return (*(int *)a - *(int *)b);
+}
 
 long matchClause(struct solver *S, long *clauselist, int listsize, int *input,
                  int size) {
@@ -852,8 +854,7 @@ long matchClause(struct solver *S, long *clauselist, int listsize, int *input,
         result = clauselist[i];
         clauselist[i] = clauselist[--listsize];
         return result;
-    match_next:
-        ;
+    match_next:;
     }
     return 0;
 }
@@ -869,7 +870,8 @@ unsigned int getHash(int *input) {
     return (1023 * sum + prod ^ (31 * xor_val)) % BIGINIT;
 }
 
-template <class C> bool match(C &in, const char *str) {
+template <class C>
+bool match(C &in, const char *str) {
     for (; *str != 0; ++str, ++in)
         if (*str != *in)
             return false;
@@ -1215,12 +1217,12 @@ int parse(struct solver *S) {
     S->falseStack =
         (int *)malloc((n + 1) * sizeof(int)); // Stack of falsified literals --
                                               // this pointer is never changed
-    S->forced = S->falseStack; // Points inside *falseStack at first decision
-                               // (unforced literal)
-    S->processed =
-        S->falseStack; // Points inside *falseStack at first unprocessed literal
-    S->assigned =
-        S->falseStack; // Points inside *falseStack at last unprocessed literal
+    S->forced = S->falseStack;    // Points inside *falseStack at first decision
+                                  // (unforced literal)
+    S->processed = S->falseStack; // Points inside *falseStack at first
+                                  // unprocessed literal
+    S->assigned = S->falseStack;  // Points inside *falseStack at last
+                                  // unprocessed literal
     S->reason = (long *)malloc((n + 1) * sizeof(long)); // Array of clauses
     S->used = (int *)malloc((2 * n + 1) * sizeof(int));
     S->used += n; // Labels for variables, non-zero means false
@@ -1333,8 +1335,9 @@ void printHelp() {
     printf("  -u          default unit propatation (i.e., no core-first)\n");
     printf("  -f          forward mode for UNSAT\n");
     printf("  -v          more verbose output\n");
-    printf("  -p          run in plain mode (i.e., ignore deletion "
-           "information)\n\n");
+    printf(
+        "  -p          run in plain mode (i.e., ignore deletion "
+        "information)\n\n");
     printf("  -S          run in SAT check mode (forward checking)\n\n");
     printf("and input and proof are specified as follows\n\n");
     printf("  INPUT       input file in DIMACS format\n");
@@ -1372,43 +1375,39 @@ int main(int argc, char **argv) {
         } else {
             tmp++;
             if (tmp == 1) {
-                #ifdef USE_ZLIB
+#ifdef USE_ZLIB
                 S.inputFile = gzopen(argv[1], "rb");
-                #else
+#else
                 S.inputFile = fopen(argv[1], "rb");
-                #endif
+#endif
                 if (S.inputFile == NULL) {
                     printf("c ERROR opening \"%s\".\n", argv[i]);
                     exit(-1);
                     return ERROR;
                 }
 
-                #ifdef USE_ZLIB
-                S.inputstream =
-                new StreamBuffer<gzFile, GZ>(S.inputFile);
-                #else
-                S.inputstream =
-                    new StreamBuffer<FILE*, FN>(S.inputFile);
-                #endif
+#ifdef USE_ZLIB
+                S.inputstream = new StreamBuffer<gzFile, GZ>(S.inputFile);
+#else
+                S.inputstream = new StreamBuffer<FILE *, FN>(S.inputFile);
+#endif
                 S.input_line_num = 0;
             } else if (tmp == 2) {
-                #ifdef USE_ZLIB
+#ifdef USE_ZLIB
                 S.proofFile = gzopen(argv[2], "rb");
-                #else
+#else
                 S.proofFile = fopen(argv[2], "rb");
-                #endif
+#endif
                 if (S.proofFile == NULL) {
                     printf("c ERROR opening \"%s\".\n", argv[i]);
                     exit(-1);
                 }
 
-                #ifdef USE_ZLIB
-                S.proofstream =
-                    new StreamBuffer<gzFile, GZ>(S.proofFile);
-                #else
-                S.proofstream =
-                    new StreamBuffer<FILE*, FN>(S.proofFile);
-                #endif
+#ifdef USE_ZLIB
+                S.proofstream = new StreamBuffer<gzFile, GZ>(S.proofFile);
+#else
+                S.proofstream = new StreamBuffer<FILE *, FN>(S.proofFile);
+#endif
                 S.proof_line_num = 0;
             }
         }
@@ -1421,19 +1420,18 @@ int main(int argc, char **argv) {
 
     int parseReturnValue = parse(&S);
 
-    #ifdef USE_ZLIB
+#ifdef USE_ZLIB
     gzclose(S.inputFile);
     gzclose(S.proofFile);
-    #else
+#else
     fclose(S.inputFile);
     fclose(S.proofFile);
-    #endif
+#endif
     int sts = ERROR;
     if (parseReturnValue == ERROR) {
         printf("s MEMORY ALLOCATION ERROR\n");
         exit(-1);
-    }
-    else if (parseReturnValue == UNSAT)
+    } else if (parseReturnValue == UNSAT)
         printf("c trivial UNSAT\ns VERIFIED\n");
     else if ((sts = verify(&S)) == UNSAT)
         printf("s VERIFIED\n");
