@@ -869,7 +869,7 @@ unsigned int getHash(int *input) {
         xor_val ^= *input;
         input++;
     }
-    return (1023 * sum + prod ^ (31 * xor_val)) % BIGINIT;
+    return (((1023 * sum) + prod) ^ (31 * xor_val)) % BIGINIT;
 }
 
 template <class C>
