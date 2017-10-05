@@ -259,7 +259,8 @@ void analyze(struct solver *S, int *clause, int index) {
 int propagate(struct solver *S) { // Performs unit propagation
     int *start[2], check = 0, mode = !S->prep;
     int i, lit, _lit = 0;
-    long *watch, *_watch;
+    long *watch;
+    long *_watch;
     start[0] = start[1] = S->processed;
 flip_check:;
     check ^= 1;
