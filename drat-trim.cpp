@@ -270,8 +270,9 @@ flip_check:;
             watch = _watch;
         else
             watch = S->wlist[lit]; // Obtain the first watch pointer
-        while (*watch !=
-               END) { // While there are watched clauses (watched by lit)
+
+        // While there are watched clauses (watched by lit)
+        while (*watch != END) {
             if ((*watch & mode) != check) {
                 watch++;
                 continue;
