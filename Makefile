@@ -1,7 +1,7 @@
 OBJS 	= drat-trim.o
 CXX 	= g++
 
-CPPFLAGS 	= -Wall -Wno-deprecated -O3 -ggdb -fpermissive
+CPPFLAGS 	= -Wall -Wno-deprecated -O3 -ggdb -fpermissive -std=c++11
 LFLAGS 	= -Wall -lz
 NAME 	= drat-trim
 prefix  = /usr/local
