@@ -108,33 +108,6 @@ public:
         }
     }
 
-    bool skipEOL(const size_t lineNum)
-    {
-        for (;;) {
-            if (value() == EOF || value() == '\0') return true;
-            if (value() == '\n') {
-                advance();
-                return true;
-            }
-            if (value() != '\r') {
-                std::cerr
-                << "PARSE ERROR! Unexpected char (hex: " << std::hex
-                << std::setw(2)
-                << std::setfill('0')
-                << "0x" << value()
-                << std::setfill(' ')
-                << std::dec
-                << ")"
-                << " At line " << lineNum+1
-                << " we expected an end of line character (\\n or \\r + \\n)"
-                << std::endl;
-                return false;
-            }
-            advance();
-        }
-        exit(-1);
-    }
-
     bool parseInt(int32_t& ret, size_t lineNum, bool allow_eol = false)
     {
         int32_t val = 0;
@@ -175,16 +148,6 @@ public:
         }
         ret = mult*val;
         return true;
-    }
-
-    void parseString(std::string& str)
-    {
-        str.clear();
-        skipWhitespace();
-        while (value() != ' ' && value() != '\n' && value() != EOF) {
-            str.push_back(value());
-            advance();
-        }
     }
 };
 

@@ -965,18 +965,9 @@ int parse(struct solver *S) {
         if (size == 0) {
             if (!reading_proof) {
                 S->inputstream->skipWhitespace();
-                if (match(*S->inputstream, "d")) {
-                    del = 1;
-                    bool ret = S->inputstream->parseInt(lit, S->input_line_num);
-                    assert(ret);
-                    tmp = 1;
-                    S->proofstream->skipWhitespace();
-                    if (S->inputstream->operator*() == EOF)
-                        is_eof = true;
-                }
-                // tmp = fscanf (S->inputFile, " d  %i ", &lit);
             } else {
                 S->proofstream->skipWhitespace();
+
                 if (match(*S->proofstream, "d")) {
                     del = 1;
                     bool ret = S->proofstream->parseInt(lit, S->proof_line_num);
@@ -988,6 +979,7 @@ int parse(struct solver *S) {
                 }
                 // tmp = fscanf (S->proofFile, " d  %i ", &lit);
             }
+
             S->proofstream->skipWhitespace();
             if (is_eof && !reading_proof) {
                 reading_proof = true;
