@@ -977,30 +977,26 @@ int parse(struct solver *S) {
                     if (S->proofstream->operator*() == EOF)
                         is_eof = true;
                 }
-                // tmp = fscanf (S->proofFile, " d  %i ", &lit);
             }
 
-            S->proofstream->skipWhitespace();
             if (is_eof && !reading_proof) {
                 reading_proof = true;
             }
         }
 
+        //finished, read 0
         if (!lit) {
             bool is_eof = false;
             if (!reading_proof) {
-                // tmp = fscanf (S->inputFile, " %i ", &lit);  // Read a
-                // literal.
                 bool ret =
                     S->inputstream->parseInt(lit, S->input_line_num, true);
                 assert(ret);
                 if (lit != std::numeric_limits<int32_t>::max())
                     tmp = 1;
-                S->proofstream->skipWhitespace();
+                S->inputstream->skipWhitespace();
                 if (S->inputstream->operator*() == EOF)
                     is_eof = true;
             } else {
-                // tmp = fscanf (S->proofFile, " %i ", &lit);
                 if (S->proofstream->operator*() == EOF) {
                     is_eof = true;
                     tmp = 1;
@@ -1022,17 +1018,10 @@ int parse(struct solver *S) {
         }
 
         if (tmp == 0) {
-            // char ignore[1024];
             if (!reading_proof) {
-                // if (fgets (ignore, sizeof(ignore), S->inputFile) == NULL)
-                // printf("c\n");
                 S->inputstream->skipLine();
-                // printf("c\n");
             } else {
-                // if (fgets (ignore, sizeof(ignore), S->proofFile) == NULL)
-                // printf("c\n");
                 S->inputstream->skipLine();
-                // printf("c\n");
             }
 
             if (S->verb)
