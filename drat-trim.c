@@ -1515,7 +1515,7 @@ int main (int argc, char** argv) {
   S.mode       = BACKWARD_UNSAT;
   S.delete     = 1;
   S.reduce     = 1;
-  S.binMode    = 0;
+  S.binMode    = 1;
   S.binOutput  = 0;
   gettimeofday (&S.start_time, NULL);
 
