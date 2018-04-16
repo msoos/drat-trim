@@ -1259,9 +1259,9 @@ int parse (struct solver* S) {
         if (S->binMode) {
           int res = getc_unlocked (S->proofFile);
           if      (res == EOF) break;
-          else if (res ==  97) del = 0;
-          else if (res == 100) del = 1;
-          else { printf ("\rc ERROR: wrong binary prefix\n"); exit (0); }
+          else if (res ==  97) del = 0; //'a'
+          else if (res == 100) del = 1; //'d'
+          else { printf ("\rc ERROR: wrong binary prefix: %d\n", res); exit (0); }
           S->nReads++; }
         else {
           tmp = fscanf (S->proofFile, " d  %i ", &lit);
