@@ -62,6 +62,7 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
       nLemmas, maxRAT, *RATset, *preRAT, maxDependencies, nDependencies, bar, backforce, reduce,
       *dependencies, maxVar, maxSize, mode, verb, unitSize, prep, *current, nRemoved, warning,
       delProof, *setMap, *setTruth;
+    int cl_ids;
     char *coreStr, *lemmaStr;
     double start_time;
     long mem_used, time, nClauses, nStep, nOpt, nAlloc, *unitStack, *reason, lemmas, nResolve,
@@ -1137,6 +1138,15 @@ int read_lit (struct solver *S, int *lit) {
   else       *lit = (l >> 1);
   return 1; }
 
+unsigned long long read_id (struct solver *S) {
+  long long ret = 0;
+  for(int i = 0; i < 6; i++) {
+    unsigned long long lc = getc_unlocked(S->proofFile);
+    assert(lc != EOF);
+    ret += lc << (8*i);
+  }
+  return ret; }
+
 void deactivate (struct solver *S) {
   S->nActive = 0;
   int step;
@@ -1288,7 +1298,13 @@ int parse (struct solver* S) {
     if (tmp == EOF && fileSwitchFlag) break;
     if (abs (lit) > S->nVars && !fileSwitchFlag) {
       printf ("\rc illegal literal %i due to max var %i\n", lit, S->nVars); exit (0); }
+
+    //end-of-clause
     if (!lit) {
+      if (fileSwitchFlag && S->binMode && S->cl_ids) {
+          long long id = read_id(S);
+          printf("ID is: %lu\n", (unsigned long)id);
+      }
       fileLine++;
       if (size > S->maxSize) S->maxSize = size;
       int pivot = buffer[0];
@@ -1483,6 +1499,7 @@ void printHelp ( ) {
   printf ("  -D          delete proof file after parsing\n");
   printf ("  -w          suppress warning messages\n");
   printf ("  -W          exit after first warning\n");
+  printf ("  -i          cl ids used\n");
   printf ("  -p          run in plain mode (i.e., ignore deletion information)\n\n");
   printf ("  -R          turn off reduce mode\n\n");
   printf ("  -S          run in SAT check mode (forward checking)\n\n");
@@ -1494,6 +1511,7 @@ void printHelp ( ) {
 int main (int argc, char** argv) {
   struct solver S;
 
+  S.cl_ids     = 0;
   S.inputFile  = NULL;
   S.proofFile  = stdin;
   S.coreStr    = NULL;
@@ -1530,6 +1548,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'r') S.traceFile  = fopen (argv[++i], "w");
       else if (argv[i][1] == 't') S.timeout    = atoi (argv[++i]);
       else if (argv[i][1] == 'b') S.bar        = 1;
+      else if (argv[i][1] == 'i') S.cl_ids    = 1;
       else if (argv[i][1] == 'B') S.backforce  = 1;
       else if (argv[i][1] == 'O') S.optimize   = 1;
       else if (argv[i][1] == 'C') S.binOutput  = 1;
@@ -1568,6 +1587,7 @@ int main (int argc, char** argv) {
 
   if (tmp == 1) printf ("\rc reading proof from stdin\n");
   if (tmp == 0) printHelp ();
+  if (S.cl_ids) printf("Clause IDs expected.\n");
 
   int parseReturnValue = parse (&S);
 
