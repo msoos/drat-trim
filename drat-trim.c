@@ -1301,9 +1301,10 @@ int parse (struct solver* S) {
 
     //end-of-clause
     if (!lit) {
-      if (fileSwitchFlag && S->binMode && S->cl_ids) {
-          long long id = read_id(S);
-          printf("ID is: %lu\n", (unsigned long)id);
+      long long clause_id = 0;
+      if (fileSwitchFlag && S->binMode && S->cl_ids && del == 0) {
+          clause_id = read_id(S);
+          printf("ID is: %lu\n", (unsigned long)clause_id);
       }
       fileLine++;
       if (size > S->maxSize) S->maxSize = size;
