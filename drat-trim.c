@@ -66,7 +66,7 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
       *dependencies, maxVar, maxSize, mode, verb, unitSize, prep, *current, nRemoved, warning,
       delProof, *setMap, *setTruth;
     int cl_ids;
-    char *coreStr, *lemmaStr;
+    char *coreStr, *lemmaStr, *lemmaStrShort;
     double start_time;
     long mem_used, time, nClauses, nStep, nOpt, nAlloc, *unitStack, *reason, lemmas, nResolve,
          nReads, nWrites, lratSize, lratAlloc, *lratLookup, **wlist, *optproof, *formula, *proof;  };
@@ -324,6 +324,23 @@ void printProof (struct solver *S) {
       if ((ad & 1) == 0) S->nLemmas++;
 //      if (lemmas[ID] & ACTIVE) lemmas[ID] ^= ACTIVE; // only useful for checking multiple times?
       S->proof[S->nStep++] = S->optproof[step]; } }  // why not reuse ad?
+
+  if (S->lemmaStrShort) {
+    FILE *lemmaFile = fopen (S->lemmaStrShort, "w");
+    for (step = 0; step < S->nStep; step++) {
+      long ad = S->proof[step];
+      int *lemmas = S->DB + (ad >> INFOBITS);
+      if (!lemmas[1] && (ad & 1)) continue; // don't delete unit clauses
+      int64_t clause_id = 0;
+      if (S->cl_ids && !(ad&1)) {
+          clause_id += lemmas[CLID];
+          clause_id += ((int64_t)lemmas[CLID+1]) << 32;
+          if (clause_id != 0)
+              fprintf (lemmaFile, "%" PRId64 "\n", clause_id);
+      }
+    }
+    fclose (lemmaFile);
+  }
 
   if (S->lemmaStr) {
     FILE *lemmaFile = fopen (S->lemmaStr, "w");
@@ -896,8 +913,14 @@ int init (struct solver *S) {
       if (S->lemmaStr) {
         FILE *lemmaFile = fopen (S->lemmaStr, "w");
         fprintf (lemmaFile, "0\n");
-        fclose (lemmaFile); }
-      return UNSAT; }
+        fclose (lemmaFile);
+      }
+      if (S->lemmaStrShort) {
+          FILE *lemmaFile = fopen (S->lemmaStr, "w");
+          fclose (lemmaFile);
+      }
+      return UNSAT;
+    }
     if (clause[1]) { addWatch (S, clause, 0); addWatch (S, clause, 1); }
     else if (S->false[clause[0]]) {
       printf ("\rc found complementary unit clauses\n");
@@ -1514,6 +1537,7 @@ void printHelp ( ) {
   printf ("  -c CORE     prints the unsatisfiable core to the file CORE (DIMACS format)\n");
   printf ("  -a ACTIVE   prints the active clauses to the file ACTIVE (DIMACS format)\n");
   printf ("  -l LEMMAS   prints the core lemmas to the file LEMMAS (DRAT format)\n");
+  printf ("  -x IDS      prints the core lemma IDs to the file\n");
   printf ("  -L LEMMAS   prints the core lemmas to the file LEMMAS (LRAT format)\n");
   printf ("  -r TRACE    resolution graph in the TRACE file (TRACECHECK format)\n\n");
   printf ("  -t <lim>    time limit in seconds (default %i)\n", TIMEOUT);
@@ -1544,6 +1568,7 @@ int main (int argc, char** argv) {
   S.coreStr    = NULL;
   S.activeFile = NULL;
   S.lemmaStr   = NULL;
+  S.lemmaStrShort = NULL;
   S.lratFile   = NULL;
   S.traceFile  = NULL;
   S.timeout    = TIMEOUT;
@@ -1571,6 +1596,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'c') S.coreStr    = argv[++i];
       else if (argv[i][1] == 'a') S.activeFile = fopen (argv[++i], "w");
       else if (argv[i][1] == 'l') S.lemmaStr   = argv[++i];
+      else if (argv[i][1] == 'x') S.lemmaStrShort= argv[++i];
       else if (argv[i][1] == 'L') S.lratFile   = fopen (argv[++i], "w");
       else if (argv[i][1] == 'r') S.traceFile  = fopen (argv[++i], "w");
       else if (argv[i][1] == 't') S.timeout    = atoi (argv[++i]);
