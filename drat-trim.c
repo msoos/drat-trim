@@ -22,6 +22,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <inttypes.h>
+#define __STDC_FORMAT_MACROS
 #include "time_mem.h"
 
 #define TIMEOUT     20000
@@ -33,7 +35,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define ID         -1
 #define PIVOT      -2
 #define MAXDEP	   -3
-#define EXTRA       4		// ID + PIVOT + MAXDEP + terminating 0
+#define CLID       -5
+#define EXTRA       6		// ID + PIVOT + MAXDEP + CLID + terminating 0
 #define INFOBITS    2		// could be 1 for SAT, must be 2 for QBF
 #define DBIT        1
 #define ASSUMED     2
@@ -330,18 +333,36 @@ void printProof (struct solver *S) {
       if (!lemmas[1] && (ad & 1)) continue; // don't delete unit clauses
       if (ad & 1) fprintf (lemmaFile, "d ");
       int reslit = lemmas[PIVOT];
+      int64_t clause_id = 0;
+      if (S->cl_ids && !(ad&1)) {
+          clause_id += lemmas[CLID];
+          clause_id += ((int64_t)lemmas[CLID+1]) << 32;
+      }
+
+      //prints reslit
       while (*lemmas) {
         int lit = *lemmas++;
         if (lit == reslit)
-        fprintf (lemmaFile, "%i ", lit); }
+            fprintf (lemmaFile, "%i ", lit);
+      }
       lemmas = S->DB + (ad >> INFOBITS);
+
+      //prints rest of clause
       while (*lemmas) {
         int lit = *lemmas++;
         if (lit != reslit)
-          fprintf (lemmaFile, "%i ", lit); }
-      fprintf (lemmaFile, "0\n"); }
+          fprintf (lemmaFile, "%i ", lit);
+      }
+      //end-of-clause 0
+      if (S->cl_ids && !(ad&1)) {
+          fprintf (lemmaFile, "0 %" PRId64 "\n", clause_id);
+      } else {
+          fprintf (lemmaFile, "0\n");
+      }
+    }
     fprintf (lemmaFile, "0\n");
-    fclose (lemmaFile); }
+    fclose (lemmaFile);
+  }
 
   if (S->lratFile) {
     int lastAdded = S->nClauses;
@@ -1138,10 +1159,10 @@ int read_lit (struct solver *S, int *lit) {
   else       *lit = (l >> 1);
   return 1; }
 
-unsigned long long read_id (struct solver *S) {
-  long long ret = 0;
+int64_t read_id (struct solver *S) {
+  int64_t ret = 0;
   for(int i = 0; i < 6; i++) {
-    unsigned long long lc = getc_unlocked(S->proofFile);
+    int64_t lc = getc_unlocked(S->proofFile);
     assert(lc != EOF);
     ret += lc << (8*i);
   }
@@ -1301,10 +1322,10 @@ int parse (struct solver* S) {
 
     //end-of-clause
     if (!lit) {
-      long long clause_id = 0;
+      int64_t clause_id = 0;
       if (fileSwitchFlag && S->binMode && S->cl_ids && del == 0) {
           clause_id = read_id(S);
-          printf("ID is: %lu\n", (unsigned long)clause_id);
+          //printf("ID is: %" PRId64 "\n", clause_id);
       }
       fileLine++;
       if (size > S->maxSize) S->maxSize = size;
@@ -1351,12 +1372,17 @@ int parse (struct solver* S) {
         if (del) { del = 0; size = 0; continue; } }
 
       if (S->mem_used + size + EXTRA > DBsize) { DBsize = (DBsize * 3) >> 1;
-	S->DB = (int *) realloc (S->DB, DBsize * sizeof (int));
+        S->DB = (int *) realloc (S->DB, DBsize * sizeof (int));
 //        printf("c database increased to %li\n", DBsize);
         if (S->DB == NULL) { printf("c MEMOUT: reallocation of clause database failed\n"); exit (0); } }
+
       int *clause = &S->DB[S->mem_used + EXTRA - 1];
       if (size != 0) clause[PIVOT] = pivot;
       clause[ID] = 2 * S->count; S->count++;
+      for(int i = 0; i < 2; i++) {
+          clause[CLID] = clause_id&0xffffffff;
+          clause[CLID+1] = (clause_id >> 32)&0xffffffff;
+      }
       if (S->mode == FORWARD_SAT) if (nZeros > 0) clause[ID] |= ACTIVE;
 
       for (i = 0; i < size; ++i) { clause[ i ] = buffer[ i ]; } clause[ i ] = 0;
