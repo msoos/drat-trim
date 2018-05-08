@@ -350,11 +350,6 @@ void printProof (struct solver *S) {
       if (!lemmas[1] && (ad & 1)) continue; // don't delete unit clauses
       if (ad & 1) fprintf (lemmaFile, "d ");
       int reslit = lemmas[PIVOT];
-      int64_t clause_id = 0;
-      if (S->cl_ids && !(ad&1)) {
-          clause_id += lemmas[CLID];
-          clause_id += ((int64_t)lemmas[CLID+1]) << 32;
-      }
 
       //prints reslit
       while (*lemmas) {
@@ -371,11 +366,7 @@ void printProof (struct solver *S) {
           fprintf (lemmaFile, "%i ", lit);
       }
       //end-of-clause 0
-      if (S->cl_ids && !(ad&1)) {
-          fprintf (lemmaFile, "0 %" PRId64 "\n", clause_id);
-      } else {
-          fprintf (lemmaFile, "0\n");
-      }
+      fprintf (lemmaFile, "0\n");
     }
     fprintf (lemmaFile, "0\n");
     fclose (lemmaFile);
