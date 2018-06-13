@@ -71,6 +71,7 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
     int cl_ids;
     char *coreStr, *lemmaStr, *lemmaStrShort;
     double start_time;
+    int opt_iteration;
     long mem_used, time, nClauses, nStep, nOpt, nAlloc, *unitStack, *reason, lemmas, nResolve,
          nReads, nWrites, lratSize, lratAlloc, *lratLookup, **wlist, *optproof, *formula, *proof;  };
 
@@ -367,7 +368,13 @@ void printProof (struct solver *S) {
       S->proof[S->nStep++] = S->optproof[step]; } }  // why not reuse ad?
 
   if (S->lemmaStrShort) {
-    FILE *lemmaFile = fopen (S->lemmaStrShort, "w");
+    printf("-> iter %d printing 'ID used_num last_used' to file '%s-%d'\n",
+           S->opt_iteration, S->lemmaStrShort, S->opt_iteration);
+
+    char fname_full[200];
+    sprintf(fname_full, "%s-%d", S->lemmaStrShort, S->opt_iteration);
+
+    FILE *lemmaFile = fopen (fname_full, "w");
     for (step = 0; step < S->nStep; step++) {
       long ad = S->proof[step];
       int *lemmas = S->DB + (ad >> INFOBITS);
@@ -382,6 +389,7 @@ void printProof (struct solver *S) {
           }
       }
     }
+    fprintf (lemmaFile, "Finished.\n");
     fclose (lemmaFile);
   }
 
@@ -1633,6 +1641,7 @@ int main (int argc, char** argv) {
   S.reduce     = 1;
   S.binMode    = 1;
   S.binOutput  = 0;
+  S.opt_iteration = 0;
   S.start_time = cpuTime();
 
   int i, tmp = 0;
@@ -1711,12 +1720,12 @@ int main (int argc, char** argv) {
 
   if (S.optimize) {
     printf("c proof optimization started (ignoring the timeout)\n");
-    int iteration = 1;
-//    while (iteration < 20) {
-    while (S.nRemoved) {
+    S.opt_iteration = 1;
+    while (S.nRemoved && S.opt_iteration < 3) {
+      printf("[opt] iteration %d ---- \n", S.opt_iteration);
       deactivate (&S);
-      shuffleProof (&S, iteration);
-      iteration++;
+      shuffleProof (&S, S.opt_iteration);
+      S.opt_iteration++;
       verify (&S, 0, 0); } }
 
   freeMemory (&S);
