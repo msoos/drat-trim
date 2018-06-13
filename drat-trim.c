@@ -1600,7 +1600,7 @@ void printHelp ( ) {
   printf ("  -f          forward mode for UNSAT\n");
   printf ("  -v          more verbose output\n");
   printf ("  -b          show progress bar\n");
-  printf ("  -O          optimize proof till fixpoint by repeating verification.");
+  printf ("  -O          optimize proof till fixpoint by repeating verification.\n");
   printf ("              Max iterations must be given as a parameter\n");
   printf ("  -C          compress core lemmas (emit binary proof)\n");
   printf ("  -D          delete proof file after parsing\n");
