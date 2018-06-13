@@ -1720,7 +1720,6 @@ int main (int argc, char** argv) {
 
   if (S.optimize) {
     printf("c proof optimization started (ignoring the timeout)\n");
-    S.opt_iteration = 1;
     while (S.nRemoved && S.opt_iteration < 3) {
       printf("[opt] iteration %d ---- \n", S.opt_iteration);
       deactivate (&S);
