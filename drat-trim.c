@@ -63,13 +63,14 @@ inline int getc_unlocked(FILE* f) { return getc(f); }
 #endif
 
 struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
-    int *DB, nVars, timeout, mask, delete, *falseStack, *false, *forced, binMode, optimize, binOutput,
+    int *DB, nVars, timeout, mask, delete, *falseStack, *false, *forced, binMode, binOutput,
       *processed, *assigned, count, *used, *max, COREcount, RATmode, RATcount, nActive, *lratTable,
       nLemmas, maxRAT, *RATset, *preRAT, maxDependencies, nDependencies, bar, backforce, reduce,
       *dependencies, maxVar, maxSize, mode, verb, unitSize, prep, *current, nRemoved, warning,
       delProof, *setMap, *setTruth;
     int cl_ids;
     char *coreStr, *lemmaStr, *lemmaStrShort;
+    long optimize;
     double start_time;
     int opt_iteration;
     long mem_used, time, nClauses, nStep, nOpt, nAlloc, *unitStack, *reason, lemmas, nResolve,
@@ -1599,7 +1600,8 @@ void printHelp ( ) {
   printf ("  -f          forward mode for UNSAT\n");
   printf ("  -v          more verbose output\n");
   printf ("  -b          show progress bar\n");
-  printf ("  -O          optimize proof till fixpoint by repeating verification\n");
+  printf ("  -O          optimize proof till fixpoint by repeating verification.");
+  printf ("              Max iterations must be given as a parameter\n");
   printf ("  -C          compress core lemmas (emit binary proof)\n");
   printf ("  -D          delete proof file after parsing\n");
   printf ("  -w          suppress warning messages\n");
@@ -1658,7 +1660,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'b') S.bar        = 1;
       else if (argv[i][1] == 'i') S.cl_ids    = 1;
       else if (argv[i][1] == 'B') S.backforce  = 1;
-      else if (argv[i][1] == 'O') S.optimize   = 1;
+      else if (argv[i][1] == 'O') S.optimize   = atol (argv[++i]);
       else if (argv[i][1] == 'C') S.binOutput  = 1;
       else if (argv[i][1] == 'D') S.delProof   = 1;
       else if (argv[i][1] == 'u') S.mask       = 1;
@@ -1720,7 +1722,7 @@ int main (int argc, char** argv) {
 
   if (S.optimize) {
     printf("c proof optimization started (ignoring the timeout)\n");
-    while (S.nRemoved && S.opt_iteration < 3) {
+    while (S.nRemoved && S.opt_iteration < S.optimize) {
       printf("[opt] iteration %d ---- \n", S.opt_iteration);
       deactivate (&S);
       shuffleProof (&S, S.opt_iteration);
