@@ -844,6 +844,11 @@ int setRedundancyCheck (struct solver *S, int *clause, int size, int uni) {
 */
 
 int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
+    for (int i = 0; i < S->assump_size; ++i) {
+        int lit = S->assump[i];
+        assign(S, lit);
+    }
+
   int i, indegree;
   int falsePivot = S->false[clause[PIVOT]];
   if (S->verb) { printf ("c checking lemma (%i, %i) ", size, clause[PIVOT]); printClause (clause); }
@@ -1003,12 +1008,6 @@ int init (struct solver *S) {
 int verify (struct solver *S, int begin, int end) {
   if (init (S) == UNSAT) return UNSAT;
 
-  for (int i = 0; i < S->assump_size; ++i) {
-      printf("Setting ASSUMP: %d\n", S->assump[i]);
-      addUnit(S, S->assump[i]);
-      assign(S, S->assump[i]);
-  }
-
   if (S->mode == FORWARD_UNSAT) {
     if (begin == end)
       printf ("c start forward verification\n"); }
@@ -1029,15 +1028,18 @@ int verify (struct solver *S, int begin, int end) {
 
     if (S->mode == FORWARD_SAT && S->verb) printf ("c %i active clauses\n", active);
 
-    if (propagate (S, 1, 1, 0) == UNSAT) {
-        printf("start verif here\n");
-        goto start_verification;
+    /*if (S->mode == FORWARD_SAT) {
+        printf("forward mode\n");
     }
+    if (S->mode == BACKWARD_UNSAT) {
+        printf("backward mode\n");
+    }*/
 
     if (!lemmas[1]) { // found a unit
       int lit = lemmas[0];
       if (S->verb)
-        printf ("c found unit in proof %i [%li]\n", lit, S->time);
+        printf ("c found unit in proof %i [%li] -- delete: %ld\n", lit, S->time, d);
+
       if (d) {
         if (S->mode == FORWARD_SAT) {
           removeUnit (S, lit); propagateUnits (S, 0); }
