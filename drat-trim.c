@@ -181,8 +181,8 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
   int64_t this_clause_id = get_clause_id(clause+index);
+  clause[index + USED_NUM]++;
   if (this_clause_id != 0) {
-      clause[index + USED_NUM]++;
       int64_t last_used = get_last_used(clause+index);
       last_used = sum_conflicts > last_used ? sum_conflicts : last_used;
       store_at(clause + index + LAST_USED, last_used);
@@ -410,6 +410,7 @@ void printProof (struct solver *S) {
             fprintf (lemmaFile, "%i ", lit);
       }
       lemmas = S->DB + (ad >> INFOBITS);
+      int used_num = lemmas[USED_NUM];
 
       //prints rest of clause
       while (*lemmas) {
@@ -418,7 +419,8 @@ void printProof (struct solver *S) {
           fprintf (lemmaFile, "%i ", lit);
       }
       //end-of-clause 0
-      fprintf (lemmaFile, "0\n");
+      fprintf (lemmaFile, "0");
+      fprintf (lemmaFile, " %d\n", used_num);
     }
     fprintf (lemmaFile, "0\n");
     fclose (lemmaFile);
@@ -1455,8 +1457,8 @@ int parse (struct solver* S) {
       int *clause = &S->DB[S->mem_used + EXTRA - 1];
       if (size != 0) clause[PIVOT] = pivot;
       clause[ID] = 2 * S->count; S->count++;
+      clause[USED_NUM] = 0;
       for(int i = 0; i < 2; i++) {
-          clause[USED_NUM] = 0;
           clause[LAST_USED] = -1;
           store_at(clause+CLID, clause_id);
           store_at(clause+SUM_CONFL, sum_conflicts);
