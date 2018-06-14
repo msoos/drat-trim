@@ -73,6 +73,9 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
     long optimize;
     double start_time;
     int opt_iteration;
+    int* assump;
+    int assump_size;
+    FILE* assump_file;
     long mem_used, time, nClauses, nStep, nOpt, nAlloc, *unitStack, *reason, lemmas, nResolve,
          nReads, nWrites, lratSize, lratAlloc, *lratLookup, **wlist, *optproof, *formula, *proof;  };
 
@@ -880,6 +883,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     if (S->verb) printf ("c lemma has RUP\n");
     printDependencies (S, clause, 0);
     return SUCCESS; }
+  assert(S->assump_size == 0 && "Must NOT have RAT and assumptions at the same time");
 
   // Failed RUP check.  Now test RAT.
   // printf ("RUP check failed.  Starting RAT check.\n");
@@ -999,6 +1003,12 @@ int init (struct solver *S) {
 int verify (struct solver *S, int begin, int end) {
   if (init (S) == UNSAT) return UNSAT;
 
+  for (int i = 0; i < S->assump_size; ++i) {
+      printf("Setting ASSUMP: %d\n", S->assump[i]);
+      addUnit(S, S->assump[i]);
+      assign(S, S->assump[i]);
+  }
+
   if (S->mode == FORWARD_UNSAT) {
     if (begin == end)
       printf ("c start forward verification\n"); }
@@ -1009,12 +1019,20 @@ int verify (struct solver *S, int begin, int end) {
   for (step = 0; step < S->nStep; step++) {
     if (step >= begin && step < end) continue;
     long ad = S->proof[step]; long d = ad & 1;
-    int *lemmas = S->DB + (ad >> INFOBITS);
 
+    //This is the new clause now.
+    int *lemmas = S->DB + (ad >> INFOBITS);
     S->time = lemmas[ID];
+
     if (d) { active--; }
     else   { active++; adds++; }
+
     if (S->mode == FORWARD_SAT && S->verb) printf ("c %i active clauses\n", active);
+
+    if (propagate (S, 1, 1, 0) == UNSAT) {
+        printf("start verif here\n");
+        goto start_verification;
+    }
 
     if (!lemmas[1]) { // found a unit
       int lit = lemmas[0];
@@ -1646,6 +1664,9 @@ int main (int argc, char** argv) {
   S.binMode    = 1;
   S.binOutput  = 0;
   S.opt_iteration = 0;
+  S.assump_file = 0;
+  S.assump_size = 0;
+  S.assump = 0;
   S.start_time = cpuTime();
 
   int i, tmp = 0;
@@ -1659,6 +1680,28 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'L') S.lratFile   = fopen (argv[++i], "w");
       else if (argv[i][1] == 'r') S.traceFile  = fopen (argv[++i], "w");
       else if (argv[i][1] == 't') S.timeout    = atoi (argv[++i]);
+      else if (argv[i][1] == 'A') {
+        S.assump_file = fopen(argv[++i], "r");
+        char * line = 0;
+        size_t len = 0;
+        ssize_t read;
+
+        if (S.assump_file == 0)
+            exit(EXIT_FAILURE);
+
+        S.assump_size = 0;
+        S.assump = (int*)malloc(sizeof(int)*1000);
+        while ((read = getline(&line, &len, S.assump_file)) != -1) {
+            S.assump[S.assump_size] = atoi(line);
+            printf("Assume: %d\n", S.assump[S.assump_size]);
+            S.assump_size++;
+            assert(S.assump_size < 1000);
+        }
+
+        fclose(S.assump_file);
+        if (line)
+            free(line);
+      }
       else if (argv[i][1] == 'b') S.bar        = 1;
       else if (argv[i][1] == 'i') S.cl_ids    = 1;
       else if (argv[i][1] == 'B') S.backforce  = 1;
