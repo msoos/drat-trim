@@ -1682,6 +1682,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'L') S.lratFile   = fopen (argv[++i], "w");
       else if (argv[i][1] == 'r') S.traceFile  = fopen (argv[++i], "w");
       else if (argv[i][1] == 't') S.timeout    = atoi (argv[++i]);
+      #if !defined(_MSC_VER)
       else if (argv[i][1] == 'A') {
         S.assump_file = fopen(argv[++i], "r");
         char * line = 0;
@@ -1704,6 +1705,7 @@ int main (int argc, char** argv) {
         if (line)
             free(line);
       }
+      #endif
       else if (argv[i][1] == 'b') S.bar        = 1;
       else if (argv[i][1] == 'i') S.cl_ids    = 1;
       else if (argv[i][1] == 'B') S.backforce  = 1;
