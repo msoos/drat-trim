@@ -1097,10 +1097,11 @@ int verify (struct solver *S, int begin, int end) {
     if (size == 0) { printf ("c conflict claimed, but not detected\n"); return SAT; }  // change to FAILED?
     if (size == 1) {
       if (S->verb) printf ("c found unit %i\n", lemmas[0]);
-      int64_t clause_id = get_clause_id(lemmas);
+      //int64_t clause_id = get_clause_id(lemmas);
+      int64_t sum_confl = get_sum_conflicts(lemmas);
       //printf("unit ID %d\n", clause_id);
       assign (S, lemmas[0]); S->reason[abs (lemmas[0])] = ((long) ((lemmas)-S->DB)) + 1;
-      if (propagate (S, 1, 1, clause_id) == UNSAT) goto start_verification;
+      if (propagate (S, 1, 1, sum_confl) == UNSAT) goto start_verification;
       S->forced = S->processed; } }
 
   if (S->mode == FORWARD_SAT && active == 0) {
