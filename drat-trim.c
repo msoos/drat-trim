@@ -36,10 +36,10 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define PIVOT      -2
 #define MAXDEP	   -3
 #define CLID       -5
-#define USED_NUM   -6
-#define LAST_USED  -8
-#define SUM_CONFL  -10
-#define EXTRA       11		// ID + PIVOT + MAXDEP + CLID + terminating 0
+#define USED_NUM   -7
+#define LAST_USED  -9
+#define SUM_CONFL  -11
+#define EXTRA       12		// ID + PIVOT + MAXDEP + CLID + terminating 0
 #define INFOBITS    2		// could be 1 for SAT, must be 2 for QBF
 #define DBIT        1
 #define ASSUMED     2
@@ -93,6 +93,13 @@ int64_t get_clause_id(int* lemma) {
     clause_id += lemma[CLID];
     clause_id += ((int64_t)lemma[CLID+1]) << 32;
     return clause_id;
+}
+
+int64_t get_used_num(int* lemma) {
+    int64_t used_num = 0;
+    used_num += lemma[USED_NUM];
+    used_num += ((int64_t)lemma[USED_NUM+1]) << 32;
+    return used_num;
 }
 
 int64_t get_sum_conflicts(int* lemma) {
@@ -184,12 +191,14 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
   int64_t this_clause_id = get_clause_id(clause+index);
-  clause[index + USED_NUM]++;
+  int64_t used_num = get_used_num(clause+index);
+  used_num++;
+  store_at(clause+index+USED_NUM, used_num);
   if (this_clause_id != 0) {
       int64_t last_used = get_last_used(clause+index);
       last_used = sum_conflicts > last_used ? sum_conflicts : last_used;
       store_at(clause + index + LAST_USED, last_used);
-      //printf ("used in conflict at sum conflict %" PRId64 " last used: %" PRId64 " -- this clause ID %" PRId64 " num times used: %d\n", sum_conflicts, last_used, this_clause_id, clause[index + USED_NUM]);
+      //printf ("used in conflict at sum conflict %" PRId64 " last used: %" PRId64 " -- this clause ID %" PRId64 " num times used: %" PRId64 "\n", sum_conflicts, last_used, this_clause_id, used_num);
   }
 
   if ((clause[index + ID] & ACTIVE) == 0) {
@@ -383,13 +392,12 @@ void printProof (struct solver *S) {
       long ad = S->proof[step];
       int *lemmas = S->DB + (ad >> INFOBITS);
       if (!lemmas[1] && (ad & 1)) continue; // don't delete unit clauses
-      int64_t clause_id = 0;
       if (S->cl_ids && !(ad&1)) {
-          clause_id = get_clause_id(lemmas);
-          int used_num = lemmas[USED_NUM];
+          int64_t clause_id = get_clause_id(lemmas);
+          int64_t used_num = get_used_num(lemmas);
           int64_t last_used = get_last_used(lemmas);
           if (clause_id != 0) {
-              fprintf (lemmaFile, "%" PRId64 " %d %" PRId64 "\n", clause_id, used_num, last_used);
+              fprintf (lemmaFile, "%" PRId64 " %" PRId64 " %" PRId64 "\n", clause_id, used_num, last_used);
           }
       }
     }
