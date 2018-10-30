@@ -38,8 +38,9 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define CLID       -5
 #define USED_NUM   -7
 #define LAST_USED  -9
-#define SUM_CONFL  -11
-#define EXTRA       12		// ID + PIVOT + MAXDEP + CLID + terminating 0
+#define LAST_USED2 -11
+#define SUM_CONFL  -13
+#define EXTRA       14		// ID + PIVOT + MAXDEP + CLID + terminating 0
 #define INFOBITS    2		// could be 1 for SAT, must be 2 for QBF
 #define DBIT        1
 #define ASSUMED     2
@@ -88,42 +89,22 @@ int compare (const void *a, const void *b) {
 int abscompare (const void *a, const void *b) {
   return (abs(*(int*)a) - abs(*(int*)b)); }
 
-int64_t get_clause_id(int* lemma) {
-    int64_t clause_id = 0;
-    clause_id += lemma[CLID];
-    clause_id += ((int64_t)lemma[CLID+1]) << 32;
-    return clause_id;
-}
-
-int64_t get_used_num(int* lemma) {
-    int64_t used_num = 0;
-    used_num += lemma[USED_NUM];
-    used_num += ((int64_t)lemma[USED_NUM+1]) << 32;
-    return used_num;
-}
-
-int64_t get_sum_conflicts(int* lemma) {
+// SUM_CONFL, USED_NUM, LAST_USED, LAST_USED2, CLID
+int64_t get_at(int* lemma, int offset) {
     int64_t sum_conflicts = 0;
-    sum_conflicts += lemma[SUM_CONFL];
-    sum_conflicts += ((int64_t)lemma[SUM_CONFL+1]) << 32;
+    sum_conflicts += lemma[offset]&0xffffffff;
+    sum_conflicts += ((int64_t)lemma[offset+1]&0xffffffff) << 32;
     return sum_conflicts;
-}
-
-int64_t get_last_used(int* lemma) {
-    int64_t last_used = 0;
-    last_used += lemma[LAST_USED];
-    last_used += ((int64_t)lemma[LAST_USED+1]) << 32;
-    return last_used;
 }
 
 void store_at(int* lemma, int64_t data) {
     *lemma = data&0xffffffff;
-    *(lemma+1) = (data >> 32)&0xffffffff;
+    *(lemma+1) = (data >> 32);
 }
 
 static inline void printClause (int* clause) {
   printf ("[%i] ", clause[ID]);
-  printf ("[id %i] ", get_clause_id(clause));
+  printf ("[id %li] ", get_at(clause, CLID));
   while (*clause) printf ("%i ", *clause++); printf ("0\n"); }
 
 static inline void addWatchPtr (struct solver* S, int lit, long watch) {
@@ -190,14 +171,22 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
   S->nResolve++;
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
-  int64_t this_clause_id = get_clause_id(clause+index);
-  int64_t used_num = get_used_num(clause+index);
+  int64_t this_clause_id = get_at(clause+index, CLID);
+  int64_t used_num = get_at(clause+index, USED_NUM);
   used_num++;
   store_at(clause+index+USED_NUM, used_num);
   if (this_clause_id != 0) {
-      int64_t last_used = get_last_used(clause+index);
-      last_used = sum_conflicts > last_used ? sum_conflicts : last_used;
+      int64_t last_used = get_at(clause+index, LAST_USED);
+      int64_t last_used2 = get_at(clause+index, LAST_USED2);
+      if (last_used < sum_conflicts) {
+          last_used2 = last_used;
+          last_used = sum_conflicts;
+      }
+      else if (last_used2 < sum_conflicts) {
+          last_used2 = sum_conflicts;
+      }
       store_at(clause + index + LAST_USED, last_used);
+      store_at(clause + index + LAST_USED2, last_used2);
       //printf ("used in conflict at sum conflict %" PRId64 " last used: %" PRId64 " -- this clause ID %" PRId64 " num times used: %" PRId64 "\n", sum_conflicts, last_used, this_clause_id, used_num);
   }
 
@@ -393,11 +382,13 @@ void printProof (struct solver *S) {
       int *lemmas = S->DB + (ad >> INFOBITS);
       if (!lemmas[1] && (ad & 1)) continue; // don't delete unit clauses
       if (S->cl_ids && !(ad&1)) {
-          int64_t clause_id = get_clause_id(lemmas);
-          int64_t used_num = get_used_num(lemmas);
-          int64_t last_used = get_last_used(lemmas);
+          int64_t clause_id = get_at(lemmas, CLID);
+          int64_t used_num = get_at(lemmas, USED_NUM);
+          int64_t last_used = get_at(lemmas, LAST_USED);
+          int64_t last_used2 = get_at(lemmas, LAST_USED2);
           if (clause_id != 0) {
-              fprintf (lemmaFile, "%" PRId64 " %" PRId64 " %" PRId64 "\n", clause_id, used_num, last_used);
+              fprintf (lemmaFile, "%" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 "\n",
+                       clause_id, used_num, last_used, last_used2);
           }
       }
     }
@@ -887,7 +878,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     S->reason[abs (clause[i])] = 0; }
 
   S->current = clause;
-  if (propagate (S, 0, mark, get_sum_conflicts(clause)) == UNSAT) {
+  if (propagate (S, 0, mark, get_at(clause, SUM_CONFL)) == UNSAT) {
     indegree = S->nResolve - indegree;
     if (indegree <= 2 && S->prep == 0) {
       S->prep = 1; if (S->verb) printf ("c [%li] preprocessing checking mode on\n", S->time); }
@@ -1098,7 +1089,7 @@ int verify (struct solver *S, int begin, int end) {
     if (size == 1) {
       if (S->verb) printf ("c found unit %i\n", lemmas[0]);
       //int64_t clause_id = get_clause_id(lemmas);
-      int64_t sum_confl = get_sum_conflicts(lemmas);
+      int64_t sum_confl = get_at(lemmas, SUM_CONFL);
       //printf("unit ID %d\n", clause_id);
       assign (S, lemmas[0]); S->reason[abs (lemmas[0])] = ((long) ((lemmas)-S->DB)) + 1;
       if (propagate (S, 1, 1, sum_confl) == UNSAT) goto start_verification;
@@ -1488,7 +1479,8 @@ int parse (struct solver* S) {
       clause[ID] = 2 * S->count; S->count++;
       clause[USED_NUM] = 0;
       for(int i = 0; i < 2; i++) {
-          clause[LAST_USED] = -1;
+          store_at(clause+LAST_USED, -1);
+          store_at(clause+LAST_USED2, -1);
           store_at(clause+CLID, clause_id);
           store_at(clause+SUM_CONFL, sum_conflicts);
       }
