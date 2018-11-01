@@ -182,7 +182,8 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
           last_used2 = last_used;
           last_used = sum_conflicts;
       }
-      else if (last_used2 < sum_conflicts) {
+      //if used in the same conflict number twice, don't set last_used2 to the same value
+      else if (last_used2 < sum_conflicts && last_used != sum_conflicts) {
           last_used2 = sum_conflicts;
       }
       store_at(clause + index + LAST_USED, last_used);
