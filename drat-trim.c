@@ -91,10 +91,10 @@ int abscompare (const void *a, const void *b) {
 
 // SUM_CONFL, USED_NUM, LAST_USED, LAST_USED2, CLID
 int64_t get_at(int* lemma, int offset) {
-    int64_t sum_conflicts = 0;
-    sum_conflicts += lemma[offset]&0xffffffff;
-    sum_conflicts += ((int64_t)lemma[offset+1]&0xffffffff) << 32;
-    return sum_conflicts;
+    int64_t dat = 0;
+    dat += lemma[offset]&0xffffffff;
+    dat += ((int64_t)lemma[offset+1]&0xffffffff) << 32;
+    return dat;
 }
 
 void store_at(int* lemma, int64_t data) {
