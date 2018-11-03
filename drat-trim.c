@@ -1418,6 +1418,7 @@ int parse (struct solver* S) {
       //reading the binary proof with clause IDs, not deleting
       if (fileSwitchFlag && S->binMode && S->cl_ids && del == 0) {
           clause_id = read_id(S);
+          //printf("%" PRId64 " Read ID\n", clause_id);
           sum_conflicts = read_id(S);
           //printf("ID is: %" PRId64 " sum conflict is: %" PRId64 "\n", clause_id, sum_conflicts);
       }
