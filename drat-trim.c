@@ -393,7 +393,6 @@ void printProof (struct solver *S) {
           }
       }
     }
-    fprintf (lemmaFile, "Finished.\n");
     fclose (lemmaFile);
   }
 
