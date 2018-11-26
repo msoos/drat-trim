@@ -40,7 +40,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define FIRST_USED -9
 #define LAST_USED  -11
 #define LAST_USED2 -13
-#define SUM_CONFL  -15
+#define CONFLICT_NO  -15
 #define EXTRA       16		// ID + PIVOT + MAXDEP + CLID + terminating 0
 #define INFOBITS    2		// could be 1 for SAT, must be 2 for QBF
 #define DBIT        1
@@ -90,7 +90,7 @@ int compare (const void *a, const void *b) {
 int abscompare (const void *a, const void *b) {
   return (abs(*(int*)a) - abs(*(int*)b)); }
 
-// SUM_CONFL, USED_NUM, LAST_USED, LAST_USED2, CLID
+// CONFLICT_NO, USED_NUM, LAST_USED, LAST_USED2, CLID
 int64_t get_at(int* lemma, int offset) {
     int64_t dat = 0;
     dat += lemma[offset]&0xffffffff;
@@ -168,7 +168,7 @@ static inline void addDependency (struct solver* S, int dep, int forced) {
 //    printf("c adding dep %i\n", (dep << 1) + forced);
     S->dependencies[S->nDependencies++] = (dep << 1) + forced; } }
 
-static inline void markClause (struct solver* S, int* clause, int index, int64_t sum_conflicts) {
+static inline void markClause (struct solver* S, int* clause, int index, int64_t conflict_no) {
   S->nResolve++;
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
@@ -178,24 +178,24 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
   store_at(clause+index+USED_NUM, used_num);
   if (this_clause_id != 0) {
       int64_t first_used = get_at(clause+index, FIRST_USED);
-      if (first_used > sum_conflicts) {
-          first_used = sum_conflicts;
+      if (first_used > conflict_no) {
+          first_used = conflict_no;
       }
 
       int64_t last_used = get_at(clause+index, LAST_USED);
       int64_t last_used2 = get_at(clause+index, LAST_USED2);
-      if (last_used < sum_conflicts) {
+      if (last_used < conflict_no) {
           last_used2 = last_used;
-          last_used = sum_conflicts;
+          last_used = conflict_no;
       }
       //if used in the same conflict number twice, don't set last_used2 to the same value
-      else if (last_used2 < sum_conflicts && last_used != sum_conflicts) {
-          last_used2 = sum_conflicts;
+      else if (last_used2 < conflict_no && last_used != conflict_no) {
+          last_used2 = conflict_no;
       }
       store_at(clause + index + FIRST_USED, first_used);
       store_at(clause + index + LAST_USED, last_used);
       store_at(clause + index + LAST_USED2, last_used2);
-      //printf ("used in conflict at sum conflict %" PRId64 " last used: %" PRId64 " -- this clause ID %" PRId64 " num times used: %" PRId64 "\n", sum_conflicts, last_used, this_clause_id, used_num);
+      //printf ("used in conflict at sum conflict %" PRId64 " last used: %" PRId64 " -- this clause ID %" PRId64 " num times used: %" PRId64 "\n", conflict_no, last_used, this_clause_id, used_num);
   }
 
   if ((clause[index + ID] & ACTIVE) == 0) {
@@ -209,13 +209,13 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
     markWatch (S, clause, 1 + index, -index); }
   while (*clause) S->false[*(clause++)] = MARK; }
 
-void analyze (struct solver* S, int* clause, int index, int64_t sum_conflicts) {     // Mark all clauses involved in conflict
-  markClause (S, clause, index, sum_conflicts);
+void analyze (struct solver* S, int* clause, int index, int64_t conflict_no) {     // Mark all clauses involved in conflict
+  markClause (S, clause, index, conflict_no);
   while (S->assigned > S->falseStack) {
     int lit = *(--S->assigned);
     if (S->false[lit] == MARK) {
       if (S->reason[abs (lit)]) {
-        markClause (S, S->DB + S->reason[abs (lit)], -1, sum_conflicts);
+        markClause (S, S->DB + S->reason[abs (lit)], -1, conflict_no);
         if (S->assigned >= S->forced)
           S->reason[abs (lit)] = 0; } }
     else if (S->false[lit] == ASSUMED && !S->RATmode && S->reduce && !S->lratFile) { // Remove unused literal
@@ -237,7 +237,7 @@ void noAnalyze (struct solver* S) {
 
   S->processed = S->assigned = S->forced; }
 
-int propagate (struct solver* S, int init, int mark, int64_t sum_conflicts) { // Performs unit propagation (init not used?)
+int propagate (struct solver* S, int init, int mark, int64_t conflict_no) { // Performs unit propagation (init not used?)
   int *start[2];
   int check = 0, mode = !S->prep;
   int i, lit, _lit = 0; long *watch, *_watch;
@@ -272,7 +272,7 @@ int propagate (struct solver* S, int init, int mark, int64_t sum_conflicts) { //
           goto flip_check; } }
       else if (!mark) { noAnalyze (S); return UNSAT; }
       else {
-          analyze (S, clause, 0, sum_conflicts); return UNSAT; }   // Found a root level conflict -> UNSAT
+          analyze (S, clause, 0, conflict_no); return UNSAT; }   // Found a root level conflict -> UNSAT
       next_clause: ; } }                               // Set position for next clause
   if (check) goto flip_check;
   S->processed = S->assigned;
@@ -886,7 +886,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     S->reason[abs (clause[i])] = 0; }
 
   S->current = clause;
-  if (propagate (S, 0, mark, get_at(clause, SUM_CONFL)) == UNSAT) {
+  if (propagate (S, 0, mark, get_at(clause, CONFLICT_NO)) == UNSAT) {
     indegree = S->nResolve - indegree;
     if (indegree <= 2 && S->prep == 0) {
       S->prep = 1; if (S->verb) printf ("c [%li] preprocessing checking mode on\n", S->time); }
@@ -1097,10 +1097,10 @@ int verify (struct solver *S, int begin, int end) {
     if (size == 1) {
       if (S->verb) printf ("c found unit %i\n", lemmas[0]);
       //int64_t clause_id = get_clause_id(lemmas);
-      int64_t sum_confl = get_at(lemmas, SUM_CONFL);
+      int64_t conflict_no = get_at(lemmas, CONFLICT_NO);
       //printf("unit ID %d\n", clause_id);
       assign (S, lemmas[0]); S->reason[abs (lemmas[0])] = ((long) ((lemmas)-S->DB)) + 1;
-      if (propagate (S, 1, 1, sum_confl) == UNSAT) goto start_verification;
+      if (propagate (S, 1, 1, conflict_no) == UNSAT) goto start_verification;
       S->forced = S->processed; } }
 
   if (S->mode == FORWARD_SAT && active == 0) {
@@ -1421,14 +1421,14 @@ int parse (struct solver* S) {
     //end-of-clause
     if (!lit) {
       int64_t clause_id = 0;
-      int64_t sum_conflicts = 0;
+      int64_t conflict_no = 0;
 
       //reading the binary proof with clause IDs, not deleting
       if (fileSwitchFlag && S->binMode && S->cl_ids && del == 0) {
           clause_id = read_id(S);
           //printf("%" PRId64 " Read ID\n", clause_id);
-          sum_conflicts = read_id(S);
-          //printf("ID is: %" PRId64 " sum conflict is: %" PRId64 "\n", clause_id, sum_conflicts);
+          conflict_no = read_id(S);
+          //printf("ID is: %" PRId64 " sum conflict is: %" PRId64 "\n", clause_id, conflict_no);
       }
       fileLine++;
       if (size > S->maxSize) S->maxSize = size;
@@ -1492,7 +1492,7 @@ int parse (struct solver* S) {
           store_at(clause+LAST_USED2, -1);
           store_at(clause+FIRST_USED, INT64_MAX);
           store_at(clause+CLID, clause_id);
-          store_at(clause+SUM_CONFL, sum_conflicts);
+          store_at(clause+CONFLICT_NO, conflict_no);
       }
       if (S->mode == FORWARD_SAT) if (nZeros > 0) clause[ID] |= ACTIVE;
 
