@@ -39,7 +39,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define USED_NUM   -7
 #define FIRST_USED -9
 #define LAST_USED  -11
-#define LAST_USED2 -13
+#define SUM_HIST_USED -13
 #define CONFLICT_NO  -15
 #define EXTRA       16		// ID + PIVOT + MAXDEP + CLID + terminating 0
 #define INFOBITS    2		// could be 1 for SAT, must be 2 for QBF
@@ -90,7 +90,7 @@ int compare (const void *a, const void *b) {
 int abscompare (const void *a, const void *b) {
   return (abs(*(int*)a) - abs(*(int*)b)); }
 
-// CONFLICT_NO, USED_NUM, LAST_USED, LAST_USED2, CLID
+// CONFLICT_NO, USED_NUM, LAST_USED, SUM_HIST_USED, CLID
 int64_t get_at(int* lemma, int offset) {
     int64_t dat = 0;
     dat += lemma[offset]&0xffffffff;
@@ -178,23 +178,23 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
   store_at(clause+index+USED_NUM, used_num);
   if (this_clause_id != 0) {
       int64_t first_used = get_at(clause+index, FIRST_USED);
+      int64_t sum_hist_used = get_at(clause+index, SUM_HIST_USED);
       if (first_used > conflict_no) {
           first_used = conflict_no;
       }
 
       int64_t last_used = get_at(clause+index, LAST_USED);
-      int64_t last_used2 = get_at(clause+index, LAST_USED2);
       if (last_used < conflict_no) {
-          last_used2 = last_used;
           last_used = conflict_no;
       }
-      //if used in the same conflict number twice, don't set last_used2 to the same value
-      else if (last_used2 < conflict_no && last_used != conflict_no) {
-          last_used2 = conflict_no;
-      }
+
+      int64_t clause_creation_confl = get_at(clause+index, CONFLICT_NO);
+      assert(clause_creation_confl <= conflict_no);
+      sum_hist_used += conflict_no-clause_creation_confl;
+
       store_at(clause + index + FIRST_USED, first_used);
       store_at(clause + index + LAST_USED, last_used);
-      store_at(clause + index + LAST_USED2, last_used2);
+      store_at(clause + index + SUM_HIST_USED, sum_hist_used);
       //printf ("used in conflict at sum conflict %" PRId64 " last used: %" PRId64 " -- this clause ID %" PRId64 " num times used: %" PRId64 "\n", conflict_no, last_used, this_clause_id, used_num);
   }
 
@@ -394,10 +394,10 @@ void printProof (struct solver *S) {
           int64_t used_num = get_at(lemmas, USED_NUM);
           int64_t first_used = get_at(lemmas, FIRST_USED);
           int64_t last_used = get_at(lemmas, LAST_USED);
-          int64_t last_used2 = get_at(lemmas, LAST_USED2);
+          int64_t sum_hist_used = get_at(lemmas, SUM_HIST_USED);
           if (clause_id != 0) {
               fprintf (lemmaFile, "%" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 "\n",
-                       clause_id, used_num, first_used, last_used, last_used2);
+                       clause_id, used_num, first_used, last_used, sum_hist_used);
           }
       }
     }
@@ -1489,7 +1489,7 @@ int parse (struct solver* S) {
       clause[USED_NUM] = 0;
       for(int i = 0; i < 2; i++) {
           store_at(clause+LAST_USED, -1);
-          store_at(clause+LAST_USED2, -1);
+          store_at(clause+SUM_HIST_USED, 0);
           store_at(clause+FIRST_USED, INT64_MAX);
           store_at(clause+CLID, clause_id);
           store_at(clause+CONFLICT_NO, conflict_no);
