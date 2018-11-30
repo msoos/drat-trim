@@ -190,6 +190,8 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
 
       int64_t clause_creation_confl = get_at(clause+index, CONFLICT_NO);
       assert(clause_creation_confl <= conflict_no);
+      assert(clause_creation_confl <= first_used);
+      assert(clause_creation_confl <= last_used);
       sum_hist_used += conflict_no-clause_creation_confl;
 
       store_at(clause + index + FIRST_USED, first_used);
