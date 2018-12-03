@@ -71,13 +71,14 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
       *dependencies, maxVar, maxSize, mode, verb, unitSize, prep, *current, nRemoved, warning,
       delProof, *setMap, *setTruth;
     int cl_ids;
-    char *coreStr, *lemmaStr, *lemmaStrShort;
+    char *coreStr, *lemmaStr, *lemmaStrShort, *usedClFname;
     long optimize;
     double start_time;
     int opt_iteration;
     int* assump;
     int assump_size;
     FILE* assump_file;
+    FILE* cl_used_file;
     long mem_used, time, nClauses, nStep, nOpt, nAlloc, *unitStack, *reason, lemmas, nResolve,
          nReads, nWrites, lratSize, lratAlloc, *lratLookup, **wlist, *optproof, *formula, *proof;  };
 
@@ -187,6 +188,13 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
       if (last_used < conflict_no) {
           last_used = conflict_no;
       }
+      if (S->cl_used_file != NULL) {
+          int written = fwrite(&this_clause_id, sizeof(int64_t), 1, S->cl_used_file);
+          assert(written == 1);
+          written = fwrite(&conflict_no, sizeof(int64_t), 1, S->cl_used_file);
+          assert(written == 1);
+      }
+
 
       int64_t clause_creation_confl = get_at(clause+index, CONFLICT_NO);
       assert(clause_creation_confl <= conflict_no);
@@ -380,7 +388,7 @@ void printProof (struct solver *S) {
       S->proof[S->nStep++] = S->optproof[step]; } }  // why not reuse ad?
 
   if (S->lemmaStrShort) {
-    printf("-> iter %d printing 'ID used_num last_used' to file '%s-%d'\n",
+    printf("-> iter %d printing goodClauses to file '%s-%d'\n",
            S->opt_iteration, S->lemmaStrShort, S->opt_iteration);
 
     char fname_full[200];
@@ -1226,6 +1234,30 @@ int verify (struct solver *S, int begin, int end) {
   postprocess (S);
   return UNSAT; }
 
+int verify_wrap_cl_used(struct solver *S, int begin, int end) {
+  if (S->usedClFname != NULL) {
+      printf("-> iter %d printing usedClauses to file '%s-%d'\n",
+           S->opt_iteration, S->usedClFname, S->opt_iteration);
+
+      char fname_full[200];
+      sprintf(fname_full, "%s-%d", S->usedClFname, S->opt_iteration);
+
+      S->cl_used_file = fopen (fname_full, "wb");
+      if (S->cl_used_file == NULL) {
+          printf("Cannot open 'cl_used' file for writing\n");
+          exit(-1);
+      }
+  }
+
+  int ret = verify(S, begin, end);
+
+  if (S->usedClFname != NULL) {
+      fclose(S->cl_used_file);
+      S->cl_used_file = NULL;
+  }
+  return ret;
+}
+
 long matchClause (struct solver* S, long *clauselist, int listsize, int* input, int size) {
   int i, j;
   for (i = 0; i < listsize; ++i) {
@@ -1628,6 +1660,7 @@ void printHelp ( ) {
   printf ("  -a ACTIVE   prints the active clauses to the file ACTIVE (DIMACS format)\n");
   printf ("  -l LEMMAS   prints the core lemmas to the file LEMMAS (DRAT format)\n");
   printf ("  -x IDS      prints the core lemma IDs to the file\n");
+  printf ("  -o USED     prints raw clauseID+use_time stats to a file\n");
   printf ("  -L LEMMAS   prints the core lemmas to the file LEMMAS (LRAT format)\n");
   printf ("  -r TRACE    resolution graph in the TRACE file (TRACECHECK format)\n\n");
   printf ("  -t <lim>    time limit in seconds (default %i)\n", TIMEOUT);
@@ -1660,6 +1693,7 @@ int main (int argc, char** argv) {
   S.activeFile = NULL;
   S.lemmaStr   = NULL;
   S.lemmaStrShort = NULL;
+  S.usedClFname  = NULL;
   S.lratFile   = NULL;
   S.traceFile  = NULL;
   S.timeout    = TIMEOUT;
@@ -1682,6 +1716,7 @@ int main (int argc, char** argv) {
   S.assump_file = 0;
   S.assump_size = 0;
   S.assump = 0;
+  S.cl_used_file = NULL;
   S.start_time = cpuTime();
 
   int i, tmp = 0;
@@ -1692,6 +1727,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'a') S.activeFile = fopen (argv[++i], "w");
       else if (argv[i][1] == 'l') S.lemmaStr   = argv[++i];
       else if (argv[i][1] == 'x') S.lemmaStrShort= argv[++i];
+      else if (argv[i][1] == 'o') S.usedClFname= argv[++i];
       else if (argv[i][1] == 'L') S.lratFile   = fopen (argv[++i], "w");
       else if (argv[i][1] == 'r') S.traceFile  = fopen (argv[++i], "w");
       else if (argv[i][1] == 't') S.timeout    = atoi (argv[++i]);
@@ -1760,7 +1796,6 @@ int main (int argc, char** argv) {
   if (tmp == 1) printf ("c reading proof from stdin\n");
   if (tmp == 0) printHelp ();
   if (S.cl_ids) printf("Clause IDs expected.\n");
-
   int parseReturnValue = parse (&S);
 
   fclose (S.inputFile);
@@ -1776,7 +1811,7 @@ int main (int argc, char** argv) {
   int sts = ERROR;
   if       (parseReturnValue == ERROR)          printf ("s MEMORY ALLOCATION ERROR\n");
   else if  (parseReturnValue == UNSAT)          printf ("c trivial UNSAT\ns VERIFIED\n");
-  else if  ((sts = verify (&S, -1, -1)) == UNSAT) printf ("s VERIFIED\n");
+  else if  ((sts = verify_wrap_cl_used (&S, -1, -1)) == UNSAT) printf ("s VERIFIED\n");
   else printf ("s NOT VERIFIED\n")  ;
   double current_time = cpuTime();
   double runtime = cpuTime() - S.start_time;
@@ -1789,7 +1824,7 @@ int main (int argc, char** argv) {
       deactivate (&S);
       shuffleProof (&S, S.opt_iteration);
       S.opt_iteration++;
-      verify (&S, 0, 0); } }
+      verify_wrap_cl_used (&S, 0, 0); } }
 
   freeMemory (&S);
   return (sts != UNSAT); // 0 on success, 1 on any failure
