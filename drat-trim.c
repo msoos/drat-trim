@@ -105,8 +105,8 @@ void store_at(int* lemma, int64_t data) {
 }
 
 static inline void printClause (int* clause) {
-  printf ("[%i] ", clause[ID]);
-  printf ("[id %li] ", get_at(clause, CLID));
+  //printf ("[%i] ", clause[ID]);
+  //printf ("[id %li] ", get_at(clause, CLID));
   while (*clause) printf ("%i ", *clause++); printf ("0\n"); }
 
 static inline void addWatchPtr (struct solver* S, int lit, long watch) {
