@@ -35,6 +35,36 @@ ENDIF()
 
 PROJECT(drat-trim)
 
+option(BUILD_SHARED_LIBS "Build the shared library" ON)
+option(STATICCOMPILE "Compile to static executable" OFF)
+if (STATICCOMPILE)
+    set(BUILD_SHARED_LIBS OFF)
+endif()
+
+if ((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
+    if(NOT BUILD_SHARED_LIBS)
+        MESSAGE(STATUS "Compiling for static library use")
+        if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static ")
+        endif()
+
+        SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+
+        # removing -rdynamic that's automatically added
+        foreach (language CXX C)
+            set(VAR_TO_MODIFY "CMAKE_SHARED_LIBRARY_LINK_${language}_FLAGS")
+            string(REGEX REPLACE "(^| )-rdynamic($| )"
+                                 " "
+                                 replacement
+                                 "${${VAR_TO_MODIFY}}")
+            #message("Original (${VAR_TO_MODIFY}) is ${${VAR_TO_MODIFY}} replacement is ${replacement}")
+            set(${VAR_TO_MODIFY} "${replacement}" CACHE STRING "Default flags for ${build_config} configuration" FORCE)
+        endforeach()
+    else()
+        MESSAGE(STATUS "Compiling for dynamic library use")
+    endif()
+endif()
+
 find_package(ZLIB)
 IF (ZLIB_FOUND)
     MESSAGE(STATUS "OK, Found ZLIB!")

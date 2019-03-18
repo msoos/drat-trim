@@ -9,8 +9,8 @@ prefix  = /usr/local
 $(NAME) : $(OBJS)
 	$(CXX) -o $(NAME) $(OBJS) $(LFLAGS)
 
-drat-trim.o : drat-trim.cpp
-	$(CXX) $(CPPFLAGS) -c drat-trim.cpp
+drat-trim.o : drat-trim.c
+	$(CXX) $(CPPFLAGS) -c drat-trim.c
 
 clean:
 	rm -f *.o 
