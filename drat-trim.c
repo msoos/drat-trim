@@ -36,12 +36,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define PIVOT      -2
 #define MAXDEP	   -3
 #define CLID       -5
-#define USED_NUM   -7
-#define FIRST_USED -9
-#define LAST_USED  -11
-#define SUM_HIST_USED -13
-#define CONFLICT_NO  -15
-#define EXTRA       16		// ID + PIVOT + MAXDEP + CLID + terminating 0
+#define CONFLICT_NO  -7
+#define EXTRA       8		// ID + PIVOT + MAXDEP + CLID + stuff + terminating 0
 #define INFOBITS    2		// could be 1 for SAT, must be 2 for QBF
 #define DBIT        1
 #define ASSUMED     2
@@ -71,7 +67,7 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
       *dependencies, maxVar, maxSize, mode, verb, unitSize, prep, *current, nRemoved, warning,
       delProof, *setMap, *setTruth;
     int cl_ids;
-    char *coreStr, *lemmaStr, *lemmaStrShort, *usedClFname;
+    char *coreStr, *lemmaStr, *usedClFname;
     long optimize;
     double start_time;
     int opt_iteration;
@@ -174,20 +170,7 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
   int64_t this_clause_id = get_at(clause+index, CLID);
-  int64_t used_num = get_at(clause+index, USED_NUM);
-  used_num++;
-  store_at(clause+index+USED_NUM, used_num);
   if (this_clause_id != 0) {
-      int64_t first_used = get_at(clause+index, FIRST_USED);
-      int64_t sum_hist_used = get_at(clause+index, SUM_HIST_USED);
-      if (first_used > conflict_no) {
-          first_used = conflict_no;
-      }
-
-      int64_t last_used = get_at(clause+index, LAST_USED);
-      if (last_used < conflict_no) {
-          last_used = conflict_no;
-      }
       if (S->cl_used_file != NULL) {
           int written = fwrite(&this_clause_id, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
@@ -195,17 +178,9 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
           assert(written == 1);
       }
 
-
       int64_t clause_creation_confl = get_at(clause+index, CONFLICT_NO);
       assert(clause_creation_confl <= conflict_no);
-      assert(clause_creation_confl <= first_used);
-      assert(clause_creation_confl <= last_used);
-      sum_hist_used += conflict_no-clause_creation_confl;
-
-      store_at(clause + index + FIRST_USED, first_used);
-      store_at(clause + index + LAST_USED, last_used);
-      store_at(clause + index + SUM_HIST_USED, sum_hist_used);
-      //printf ("used in conflict at sum conflict %" PRId64 " last used: %" PRId64 " -- this clause ID %" PRId64 " num times used: %" PRId64 "\n", conflict_no, last_used, this_clause_id, used_num);
+      //printf ("used in conflict at sum conflict %" PRId64 "-- clause ID %" PRId64 " \n", conflict_no, this_clause_id);
   }
 
   if ((clause[index + ID] & ACTIVE) == 0) {
@@ -387,33 +362,6 @@ void printProof (struct solver *S) {
 //      if (lemmas[ID] & ACTIVE) lemmas[ID] ^= ACTIVE; // only useful for checking multiple times?
       S->proof[S->nStep++] = S->optproof[step]; } }  // why not reuse ad?
 
-  if (S->lemmaStrShort) {
-    printf("-> iter %d printing goodClauses to file '%s-%d'\n",
-           S->opt_iteration, S->lemmaStrShort, S->opt_iteration);
-
-    char fname_full[200];
-    sprintf(fname_full, "%s-%d", S->lemmaStrShort, S->opt_iteration);
-
-    FILE *lemmaFile = fopen (fname_full, "w");
-    for (step = 0; step < S->nStep; step++) {
-      long ad = S->proof[step];
-      int *lemmas = S->DB + (ad >> INFOBITS);
-      if (!lemmas[1] && (ad & 1)) continue; // don't delete unit clauses
-      if (S->cl_ids && !(ad&1)) {
-          int64_t clause_id = get_at(lemmas, CLID);
-          int64_t used_num = get_at(lemmas, USED_NUM);
-          int64_t first_used = get_at(lemmas, FIRST_USED);
-          int64_t last_used = get_at(lemmas, LAST_USED);
-          int64_t sum_hist_used = get_at(lemmas, SUM_HIST_USED);
-          if (clause_id != 0) {
-              fprintf (lemmaFile, "%" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 "\n",
-                       clause_id, used_num, first_used, last_used, sum_hist_used);
-          }
-      }
-    }
-    fclose (lemmaFile);
-  }
-
   if (S->lemmaStr) {
     FILE *lemmaFile = fopen (S->lemmaStr, "w");
     for (step = 0; step < S->nStep; step++) {
@@ -430,7 +378,6 @@ void printProof (struct solver *S) {
             fprintf (lemmaFile, "%i ", lit);
       }
       lemmas = S->DB + (ad >> INFOBITS);
-      int used_num = lemmas[USED_NUM];
 
       //prints rest of clause
       while (*lemmas) {
@@ -440,7 +387,6 @@ void printProof (struct solver *S) {
       }
       //end-of-clause 0
       fprintf (lemmaFile, "0");
-      fprintf (lemmaFile, " %d\n", used_num);
     }
     fprintf (lemmaFile, "0\n");
     fclose (lemmaFile);
@@ -986,10 +932,6 @@ int init (struct solver *S) {
         fprintf (lemmaFile, "0\n");
         fclose (lemmaFile);
       }
-      if (S->lemmaStrShort) {
-          FILE *lemmaFile = fopen (S->lemmaStr, "w");
-          fclose (lemmaFile);
-      }
       return UNSAT;
     }
     if (clause[1]) { addWatch (S, clause, 0); addWatch (S, clause, 1); }
@@ -1520,14 +1462,8 @@ int parse (struct solver* S) {
       int *clause = &S->DB[S->mem_used + EXTRA - 1];
       if (size != 0) clause[PIVOT] = pivot;
       clause[ID] = 2 * S->count; S->count++;
-      clause[USED_NUM] = 0;
-      for(int i = 0; i < 2; i++) {
-          store_at(clause+LAST_USED, -1);
-          store_at(clause+SUM_HIST_USED, 0);
-          store_at(clause+FIRST_USED, INT64_MAX);
-          store_at(clause+CLID, clause_id);
-          store_at(clause+CONFLICT_NO, conflict_no);
-      }
+      store_at(clause+CLID, clause_id);
+      store_at(clause+CONFLICT_NO, conflict_no);
       if (S->mode == FORWARD_SAT) if (nZeros > 0) clause[ID] |= ACTIVE;
 
       for (i = 0; i < size; ++i) { clause[ i ] = buffer[ i ]; } clause[ i ] = 0;
@@ -1692,7 +1628,6 @@ int main (int argc, char** argv) {
   S.coreStr    = NULL;
   S.activeFile = NULL;
   S.lemmaStr   = NULL;
-  S.lemmaStrShort = NULL;
   S.usedClFname  = NULL;
   S.lratFile   = NULL;
   S.traceFile  = NULL;
@@ -1726,7 +1661,6 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'c') S.coreStr    = argv[++i];
       else if (argv[i][1] == 'a') S.activeFile = fopen (argv[++i], "w");
       else if (argv[i][1] == 'l') S.lemmaStr   = argv[++i];
-      else if (argv[i][1] == 'x') S.lemmaStrShort= argv[++i];
       else if (argv[i][1] == 'o') S.usedClFname= argv[++i];
       else if (argv[i][1] == 'L') S.lratFile   = fopen (argv[++i], "w");
       else if (argv[i][1] == 'r') S.traceFile  = fopen (argv[++i], "w");
