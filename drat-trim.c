@@ -1178,7 +1178,7 @@ int verify (struct solver *S, int begin, int end) {
 
 int verify_wrap_cl_used(struct solver *S, int begin, int end) {
   if (S->usedClFname != NULL) {
-      printf("-> iter %d printing usedClauses to file '%s-%d'\n",
+      printf("-> iter %d printing used_clauses to file '%s-%d'\n",
            S->opt_iteration, S->usedClFname, S->opt_iteration);
 
       char fname_full[200];
