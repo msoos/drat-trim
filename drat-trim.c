@@ -171,6 +171,7 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
 
   int64_t this_clause_id = get_at(clause+index, CLID);
   if (this_clause_id != 0) {
+      assert(conflict_no >= 0 && "RAT clauses, i.e. BVA cannot be used while tracking clause usefulness. There is some weird optimisation in drat-trim that marks these clauses as having been used at conflict number '-1'.... sorry, can't debug.");
       if (S->cl_used_file != NULL) {
           int written = fwrite(&this_clause_id, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
@@ -179,8 +180,10 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
       }
 
       int64_t clause_creation_confl = get_at(clause+index, CONFLICT_NO);
+//       printf("clid: %-10" PRId64 " cl creation confl no: %-10" PRId64
+//              " used at confl no: %-10" PRId64 "\n",
+//              this_clause_id, clause_creation_confl, conflict_no);
       assert(clause_creation_confl <= conflict_no);
-      //printf ("used in conflict at sum conflict %" PRId64 "-- clause ID %" PRId64 " \n", conflict_no, this_clause_id);
   }
 
   if ((clause[index + ID] & ACTIVE) == 0) {
