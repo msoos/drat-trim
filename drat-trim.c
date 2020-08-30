@@ -56,7 +56,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 #define COMPRESS
 
-#if defined(_MSC_VER)
+#if defined(WIN32)
 inline int getc_unlocked(FILE* f) { return getc(f); }
 #endif
 
