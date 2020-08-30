@@ -71,9 +71,6 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
     long optimize;
     double start_time;
     int opt_iteration;
-    int* assump;
-    int assump_size;
-    FILE* assump_file;
     FILE* cl_used_file;
     long mem_used, time, nClauses, nStep, nOpt, nAlloc, *unitStack, *reason, lemmas, nResolve,
          nReads, nWrites, lratSize, lratAlloc, *lratLookup, **wlist, *optproof, *formula, *proof;  };
@@ -810,11 +807,6 @@ int setRedundancyCheck (struct solver *S, int *clause, int size, int uni) {
 */
 
 int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
-    for (int i = 0; i < S->assump_size; ++i) {
-        int lit = S->assump[i];
-        assign(S, lit);
-    }
-
   int i, indegree;
   int falsePivot = S->false[clause[PIVOT]];
   if (S->verb) { printf ("c checking lemma (%i, %i) ", size, clause[PIVOT]); printClause (clause); }
@@ -854,7 +846,6 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     if (S->verb) printf ("c lemma has RUP\n");
     printDependencies (S, clause, 0);
     return SUCCESS; }
-  assert(S->assump_size == 0 && "Must NOT have RAT and assumptions at the same time");
 
   // Failed RUP check.  Now test RAT.
   // printf ("RUP check failed.  Starting RAT check.\n");
@@ -1651,9 +1642,6 @@ int main (int argc, char** argv) {
   S.binMode    = 1;
   S.binOutput  = 0;
   S.opt_iteration = 0;
-  S.assump_file = 0;
-  S.assump_size = 0;
-  S.assump = 0;
   S.cl_used_file = NULL;
   S.start_time = cpuTime();
 
@@ -1668,30 +1656,6 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'L') S.lratFile   = fopen (argv[++i], "w");
       else if (argv[i][1] == 'r') S.traceFile  = fopen (argv[++i], "w");
       else if (argv[i][1] == 't') S.timeout    = atoi (argv[++i]);
-      #if !defined(_MSC_VER)
-      else if (argv[i][1] == 'A') {
-        S.assump_file = fopen(argv[++i], "r");
-        char * line = 0;
-        size_t len = 0;
-        ssize_t read;
-
-        if (S.assump_file == 0)
-            exit(EXIT_FAILURE);
-
-        S.assump_size = 0;
-        S.assump = (int*)malloc(sizeof(int)*1000);
-        while ((read = getline(&line, &len, S.assump_file)) != -1) {
-            S.assump[S.assump_size] = atoi(line);
-            printf("Assume: %d\n", S.assump[S.assump_size]);
-            S.assump_size++;
-            assert(S.assump_size < 1000);
-        }
-
-        fclose(S.assump_file);
-        if (line)
-            free(line);
-      }
-      #endif
       else if (argv[i][1] == 'b') S.bar        = 1;
       else if (argv[i][1] == 'i') S.cl_ids    = 1;
       else if (argv[i][1] == 'B') S.backforce  = 1;
