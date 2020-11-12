@@ -345,11 +345,9 @@ void printLRATline (struct solver *S, int time) {
     write_lit (S, *line++); }
   else {
     while (*line) fprintf (S->lratFile, "%i ", *line++);
-    fprintf (S->lratFile, "%i ", *line++); //the zero
+    fprintf (S->lratFile, "%i ", *line++);
     while (*line) fprintf (S->lratFile, "%i ", *line++);
-    fprintf (S->lratFile, "%i\n", *line++); //the zero
-  }
-}
+    fprintf (S->lratFile, "%i\n", *line++); } }
 
 // print the core lemmas to lemmaFile in DRAT format
 void printProof (struct solver *S) {
@@ -1099,13 +1097,17 @@ int verify (struct solver *S, int begin, int end) {
 
   if (S->mode == FORWARD_SAT) {
     printf ("c ERROR: found empty clause during SAT check\n"); exit (0); }
+  printf ("c detected empty clause; start verification via backward checking\n");
+
+  S->forced = S->processed;
   assert (S->mode == BACKWARD_UNSAT); // only reachable in BACKWARD_UNSAT mode
 
-  printf ("c detected empty clause; start verification via backward checking\n");
-  S->forced = S->processed;
   S->nOpt = 0;
+
   int checked = 0, skipped = 0;
+
   double max = (double) adds;
+
   double backward_time = cpuTime();
   for (; step >= 0; step--) {
     double current_time = cpuTime();
@@ -1125,8 +1127,7 @@ int verify (struct solver *S, int begin, int end) {
         if (step == 0) printf("\n");
         fflush (stdout); }
 
-    long ad = S->proof[step];
-    long d = ad & 1;
+    long ad = S->proof[step]; long d = ad & 1;
     int *clause = S->DB + (ad >> INFOBITS);
 
 
@@ -1151,8 +1152,8 @@ int verify (struct solver *S, int begin, int end) {
     S->time = clause[ID];
     if ((S->time & ACTIVE) == 0) {
       skipped++;
+//      if ((skipped % 100) == 0) printf("c skipped %i, checked %i\n", skipped, checked);
       if (S->verb) {printf("c Skipping: "); printClause (clause);}
-      //printf("c skipped %i, checked %i\n", skipped, checked);
       continue; } // If not marked, continue
 
     assert (size >= 1);
