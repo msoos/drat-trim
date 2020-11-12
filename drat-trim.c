@@ -100,7 +100,12 @@ void store_at(int* lemma, int64_t data) {
 static inline void printClause (int* clause) {
   //printf ("[%i] ", clause[ID]);
   //printf ("[id %li] ", get_at(clause, CLID));
-  while (*clause) printf ("%i ", *clause++); printf ("0\n"); }
+//   uint64_t clause_id = get_at(clause, CLID);
+//   uint64_t conflict_no = get_at(clause, CONFLICT_NO);
+  while (*clause) printf ("%i ", *clause++); printf ("0\n");
+//   printf("clause_id: %ld", clause_id);
+//   printf(" conflict_no: %ld\n", conflict_no);
+}
 
 static inline void addWatchPtr (struct solver* S, int lit, long watch) {
   if (S->used[lit] + 1 == S->max[lit]) { S->max[lit] *= 1.5;
