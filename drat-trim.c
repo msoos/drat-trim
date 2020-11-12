@@ -170,7 +170,8 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
   if (this_clause_id != 0) {
       assert(conflict_no >= 0 && "RAT clauses, i.e. BVA cannot be used while tracking clause usefulness. There is some weird optimisation in drat-trim that marks these clauses as having been used at conflict number '-1'.... sorry, can't debug.");
       if (S->cl_used_file != NULL) {
-          int written = fwrite(&this_clause_id, sizeof(int64_t), 1, S->cl_used_file);
+          int written;
+          written = fwrite(&this_clause_id, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
           written = fwrite(&conflict_no, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
@@ -241,7 +242,7 @@ int propagate (struct solver* S, int init, int mark, int64_t conflict_no) { // P
          S->false[ -clause[1] ]) {
        watch++; continue; }
      if (clause[0] == lit) clause[0] = clause[1];      // Ensure that the other watched literal is in front
-      for (i = 2; clause[i]; ++i)                      // Scan the non-watched literals
+     for (i = 2; clause[i]; ++i)                       // Scan the non-watched literals
         if (S->false[ clause[i] ] == 0) {              // When clause[j] is not false, it is either true or unset
           clause[1] = clause[i]; clause[i] = lit;      // Swap literals
           addWatchPtr (S, clause[1], *watch);          // Add the watch to the list of clause[1]
@@ -1226,6 +1227,8 @@ int read_lit (struct solver *S, int *lit) {
   else       *lit = (l >> 1);
   return 1; }
 
+
+//for reading clause_id and conflict_no
 int64_t read_id (struct solver *S) {
   int64_t ret = 0;
   for(int i = 0; i < 6; i++) {
@@ -1397,7 +1400,9 @@ int parse (struct solver* S) {
       if (fileSwitchFlag && S->binMode && S->cl_ids && del == 0) {
           clause_id = read_id(S);
           //printf("%" PRId64 " Read ID\n", clause_id);
+//           printf("clause_id: %ld", clause_id);
           conflict_no = read_id(S);
+//           printf(" conflict_no: %ld\n", conflict_no);
           //printf("ID is: %" PRId64 " sum conflict is: %" PRId64 "\n", clause_id, conflict_no);
       }
       fileLine++;
