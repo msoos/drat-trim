@@ -100,11 +100,11 @@ void store_at(int* lemma, int64_t data) {
 static inline void printClause (int* clause) {
   //printf ("[%i] ", clause[ID]);
   //printf ("[id %li] ", get_at(clause, CLID));
-//   uint64_t clause_id = get_at(clause, CLID);
-//   uint64_t conflict_no = get_at(clause, CONFLICT_NO);
-  while (*clause) printf ("%i ", *clause++); printf ("0\n");
-//   printf("clause_id: %ld", clause_id);
-//   printf(" conflict_no: %ld\n", conflict_no);
+  uint64_t clause_id = get_at(clause, CLID);
+  uint64_t conflict_no = get_at(clause, CONFLICT_NO);
+  while (*clause) printf ("%i ", *clause++); printf ("0 ");
+  printf("clause_id: %ld", clause_id);
+  printf(" conflict_no: %ld\n", conflict_no);
 }
 
 static inline void addWatchPtr (struct solver* S, int lit, long watch) {
@@ -171,15 +171,18 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
   S->nResolve++;
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
-  int64_t this_clause_id = get_at(clause+index, CLID);
-  if (this_clause_id != 0) {
+  int64_t clause_id = get_at(clause+index, CLID);
+  if (clause_id != 0) {
       assert(conflict_no >= 0 && "RAT clauses, i.e. BVA cannot be used while tracking clause usefulness. There is some weird optimisation in drat-trim that marks these clauses as having been used at conflict number '-1'.... sorry, can't debug.");
       if (S->cl_used_file != NULL) {
           int written;
-          written = fwrite(&this_clause_id, sizeof(int64_t), 1, S->cl_used_file);
+          written = fwrite(&clause_id, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
           written = fwrite(&conflict_no, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
+          if (S->verb) {
+            printf("c clause used at %ld: ", conflict_no); printClause(clause+index);
+          }
       }
 
       int64_t clause_creation_confl = get_at(clause+index, CONFLICT_NO);
@@ -187,6 +190,10 @@ static inline void markClause (struct solver* S, int* clause, int index, int64_t
 //              " used at confl no: %-10" PRId64 "\n",
 //              this_clause_id, clause_creation_confl, conflict_no);
       assert(clause_creation_confl <= conflict_no);
+  } else {
+    if (S->verb) {
+      printf("c clause used at %ld: ", conflict_no);; printClause(clause+index);
+    }
   }
 
   if ((clause[index + ID] & ACTIVE) == 0) {
@@ -338,9 +345,11 @@ void printLRATline (struct solver *S, int time) {
     write_lit (S, *line++); }
   else {
     while (*line) fprintf (S->lratFile, "%i ", *line++);
-    fprintf (S->lratFile, "%i ", *line++);
+    fprintf (S->lratFile, "%i ", *line++); //the zero
     while (*line) fprintf (S->lratFile, "%i ", *line++);
-    fprintf (S->lratFile, "%i\n", *line++); } }
+    fprintf (S->lratFile, "%i\n", *line++); //the zero
+  }
+}
 
 // print the core lemmas to lemmaFile in DRAT format
 void printProof (struct solver *S) {
@@ -1077,6 +1086,9 @@ int verify (struct solver *S, int begin, int end) {
       printf ("c ERROR: no conflict\n");
       return SAT; } }
 
+  //////////////
+  ////////////// VERIFICATION STARTS HERE ////////////////
+  //////////////
   start_verification:;
   if (S->mode == FORWARD_UNSAT) {
     printDependencies (S, NULL, 0);
@@ -1087,17 +1099,13 @@ int verify (struct solver *S, int begin, int end) {
 
   if (S->mode == FORWARD_SAT) {
     printf ("c ERROR: found empty clause during SAT check\n"); exit (0); }
-  printf ("c detected empty clause; start verification via backward checking\n");
-
-  S->forced = S->processed;
   assert (S->mode == BACKWARD_UNSAT); // only reachable in BACKWARD_UNSAT mode
 
+  printf ("c detected empty clause; start verification via backward checking\n");
+  S->forced = S->processed;
   S->nOpt = 0;
-
   int checked = 0, skipped = 0;
-
   double max = (double) adds;
-
   double backward_time = cpuTime();
   for (; step >= 0; step--) {
     double current_time = cpuTime();
@@ -1117,12 +1125,16 @@ int verify (struct solver *S, int begin, int end) {
         if (step == 0) printf("\n");
         fflush (stdout); }
 
-    long ad = S->proof[step]; long d = ad & 1;
+    long ad = S->proof[step];
+    long d = ad & 1;
     int *clause = S->DB + (ad >> INFOBITS);
 
 
     if (ad == 0) continue; // Skip lemma that has been removed from proof
+
+    //LSB bit of "S->proof[step]"
     if ( d == 0) {
+      if (S->verb) {printf("d was zero for: "); printClause (clause);}
       adds--;
       if (clause[1]) {
         removeWatch (S, clause, 0), removeWatch (S, clause, 1);
@@ -1139,7 +1151,8 @@ int verify (struct solver *S, int begin, int end) {
     S->time = clause[ID];
     if ((S->time & ACTIVE) == 0) {
       skipped++;
-//      if ((skipped % 100) == 0) printf("c skipped %i, checked %i\n", skipped, checked);
+      if (S->verb) {printf("c Skipping: "); printClause (clause);}
+      //printf("c skipped %i, checked %i\n", skipped, checked);
       continue; } // If not marked, continue
 
     assert (size >= 1);
