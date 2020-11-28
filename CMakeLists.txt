@@ -34,6 +34,12 @@ ENDIF()
 
 PROJECT(drat-trim)
 
+option(BUILD_SHARED_LIBS "Build the shared library" ON)
+option(STATICCOMPILE "Compile to static executable" OFF)
+if (STATICCOMPILE)
+    set(BUILD_SHARED_LIBS OFF)
+endif()
+
 find_package(ZLIB)
 IF (ZLIB_FOUND)
     MESSAGE(STATUS "OK, Found ZLIB!")
