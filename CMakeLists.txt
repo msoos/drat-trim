@@ -227,6 +227,8 @@ if (NOT NOZLIB AND NOT ((NOT BUILD_SHARED_LIBS) AND WIN32))
     ENDIF (ZLIB_FOUND)
 endif()
 
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
+
 add_executable(drat-trim
     drat-trim.c
 )

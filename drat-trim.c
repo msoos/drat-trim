@@ -22,6 +22,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <math.h>
 #include <inttypes.h>
 #define __STDC_FORMAT_MACROS
 #include "time_mem.h"
@@ -1343,7 +1344,7 @@ void shuffleProof (struct solver *S, int iteration) {
 
   double base = 100;
   for (i = 1; i < iteration; i++)
-    base *= 1.1;
+    base *= 1.5;
 
   // randomly remove clause deletion steps
   for (_step = 0, step = 0; step < S->nStep; step++) {
@@ -1351,7 +1352,7 @@ void shuffleProof (struct solver *S, int iteration) {
       int length = 0;
       int *clause = S->DB + (S->proof[step] >> INFOBITS);
       while (*clause) { length++; clause++; }
-      if ((rand() % 1000) < (base * iteration / length)) continue; }
+      if ((rand() % 50) < (base * iteration / sqrt((double)length))) continue; }
     S->proof[_step++] = S->proof[step]; }
   S->nStep = _step;
 
@@ -1365,8 +1366,8 @@ void shuffleProof (struct solver *S, int iteration) {
     else {
       int *c = S->DB + (a >> INFOBITS);
       int *d = S->DB + (b >> INFOBITS);
-      int coinflip = 0;
-//      int coinflip = rand () / (RAND_MAX >> 1);
+      //int coinflip = 0;
+      int coinflip = (rand ()  % 4) == 0;
       if (c[MAXDEP] < d[MAXDEP] || (coinflip && (c[MAXDEP] < d[ID]))) {
         int tmp = d[ID];
         d[ID] = c[ID];
