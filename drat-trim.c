@@ -1821,6 +1821,8 @@ int main (int argc, char** argv) {
     printf("c proof optimization started (ignoring the timeout)\n");
     while (S.nRemoved && S.opt_iteration < S.optimize) {
       printf("[opt] iteration %d ---- \n", S.opt_iteration);
+      S.anc_assigned = 0;
+      S.anc_anc_assigned = 0;
       deactivate (&S);
       shuffleProof (&S, S.opt_iteration);
       S.opt_iteration++;
