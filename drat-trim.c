@@ -76,7 +76,11 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
     FILE* cl_used_file;
     FILE* anc_cl_used_file;
     long mem_used, time, nClauses, nStep, nOpt, nAlloc, *unitStack, *reason, lemmas, nResolve,
-         nReads, nWrites, lratSize, lratAlloc, *lratLookup, **wlist, *optproof, *formula, *proof;  };
+         nReads, nWrites, lratSize, lratAlloc, *lratLookup, **wlist, *optproof, *formula, *proof;
+    long anc_assigned;
+    long anc_anc_assigned;
+
+};
 
 static inline void assign (struct solver* S, int lit) {
   S->false[-lit] = 1; *(S->assigned++) = -lit; }
@@ -196,6 +200,7 @@ static inline void markClause (struct solver* S, int* clause, int index,
   if (clause_id != 0) {
       assert(conflict_no >= 0 && "RAT clauses, i.e. BVA cannot be used while tracking clause usefulness. There is some weird optimisation in drat-trim that marks these clauses as having been used at conflict number '-1'.... sorry, can't debug.");
       if(ret_cl_id != NULL) {
+          S->anc_assigned++;
           *ret_cl_id = clause_id;
           *ret_cl_confl = get_at(clause+index, CONFLICT_NO);
       }
@@ -221,6 +226,13 @@ static inline void markClause (struct solver* S, int* clause, int index,
     }
   }
 
+  //Still not set, set to ancestor if it exists (so we'll be ancestor's ancestor)
+  if(ret_cl_id != NULL && *ret_cl_id == -1 && anc_clause_id != 0) {
+      S->anc_anc_assigned++;
+      *ret_cl_id = anc_clause_id;
+      *ret_cl_confl = anc_conflict_no;
+  }
+
   if ((clause[index + ID] & ACTIVE) == 0) {
     S->nActive++;
     clause[index + ID] |= ACTIVE;
@@ -234,7 +246,7 @@ static inline void markClause (struct solver* S, int* clause, int index,
 
 // Mark all clauses involved in conflict
 void analyze (struct solver* S, int* clause, int index, int64_t conflict_no,
-              int64_t* ret_cl_id, uint64_t* ret_cl_confl) {
+              int64_t* ret_cl_id, int64_t* ret_cl_confl) {
 
   markClause (S, clause, index, conflict_no, NULL, NULL);
   while (S->assigned > S->falseStack) {
@@ -524,7 +536,9 @@ void postprocess (struct solver *S) {
   printActive (S);
   printCore   (S);
   printTrace  (S);   // closes traceFile
-  printProof  (S); } // closes lratFile
+  printProof  (S);   // closes lratFile
+  printf("c Num anc assigned: %ld anc_anc assigned: %ld\n", S->anc_assigned, S->anc_anc_assigned);
+}
 
 void lratAdd (struct solver *S, int elem) {
   if (S->lratSize == S->lratAlloc) {
@@ -1726,6 +1740,8 @@ int main (int argc, char** argv) {
   S.opt_iteration = 0;
   S.cl_used_file = NULL;
   S.anc_cl_used_file = NULL;
+  S.anc_assigned = 0;
+  S.anc_anc_assigned = 0;
   S.start_time = cpuTime();
 
   int i, tmp = 0;
