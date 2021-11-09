@@ -227,8 +227,6 @@ if (NOT NOZLIB AND NOT ((NOT BUILD_SHARED_LIBS) AND WIN32))
     ENDIF (ZLIB_FOUND)
 endif()
 
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
-
 add_executable(drat-trim
     drat-trim.c
 )
@@ -239,7 +237,10 @@ set_target_properties(drat-trim PROPERTIES
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 IF (ZLIB_FOUND)
-    target_link_libraries(drat-trim ${ZLIB_LIBRARY})
+    target_link_libraries(drat-trim
+        ${ZLIB_LIBRARY}
+        m
+    )
 ENDIF()
 
 install(TARGETS drat-trim
