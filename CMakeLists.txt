@@ -20,8 +20,9 @@
 
 cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
 set(CMAKE_C_STANDARD 99)
+set(CMAKE_CXX_STANDARD 11)
 
-enable_language( C )
+enable_language( CXX )
 
 message(STATUS "LIB directory is '${CMAKE_INSTALL_LIBDIR}'")
 message(STATUS "BIN directory is '${CMAKE_INSTALL_BINDIR}'")
@@ -110,6 +111,21 @@ message(STATUS "build type is ${CMAKE_BUILD_TYPE}")
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(ENABLE_ASSERTIONS OFF)
 endif()
+
+option(SANITIZE "Use Clang sanitizers. You MUST use clang++ as the compiler for this to work" OFF)
+macro(add_sanitize_flags)
+if (SANITIZE)
+    #MESSAGE(WARNING "Using clang sanitizers -- you MUST use clang++ or the compile WILL fail")
+    add_sanitize_option("-fsanitize-trap=undefined,float-divide-by-zero,unsigned-integer-overflow,implicit-conversion,local-bounds,bounds,return,alignment,null,integer,enum,bool,float-cast-overflow,integer-divide-by-zero,signed-integer-overflow")
+    add_sanitize_option("-fsanitize=address")
+    add_sanitize_option("-fno-sanitize-recover")
+    add_compile_options("$<$<CONFIG:RELWITHDEBINFO>:-D_GLIBCXX_ASSERTIONS>")
+endif()
+endmacro()
+
+macro(add_sanitize_option flagname)
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flagname}" )
+endmacro()
 
 if (ENABLE_ASSERTIONS)
     # NDEBUG was already removed.
@@ -227,8 +243,9 @@ if (NOT NOZLIB AND NOT ((NOT BUILD_SHARED_LIBS) AND WIN32))
     ENDIF (ZLIB_FOUND)
 endif()
 
+add_sanitize_flags()
 add_executable(drat-trim
-    drat-trim.c
+    drat-trim.cpp
 )
 
 set_target_properties(drat-trim PROPERTIES
@@ -240,6 +257,7 @@ IF (ZLIB_FOUND)
     target_link_libraries(drat-trim
         ${ZLIB_LIBRARY}
         m
+        stdc++
     )
 ENDIF()
 

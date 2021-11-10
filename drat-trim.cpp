@@ -23,13 +23,15 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdlib.h>
 #include <assert.h>
 #include <math.h>
-#include <inttypes.h>
+#include <stdint.h>
+#include <vector>
+#include <unordered_set>
 #define __STDC_FORMAT_MACROS
 #include "time_mem.h"
 
 #define TIMEOUT     20000
 #define BIGINIT     1000000
-#define INIT        4
+#define INIT        10
 #define END         0
 #define UNSAT       0
 #define SAT         1
@@ -38,9 +40,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define MAXDEP	   -3
 #define CLID       -5
 #define CONFLICT_NO  -7
-#define CONFLICT_NO_ANC  -9
-#define CLID_ANC  -11 // a random ancestor with ID
-#define EXTRA       12		// ID + PIVOT + MAXDEP + CLID + CLID_ANC + stuff + terminating 0
+#define ANC_DATA_AT -9
+#define EXTRA       10		// ID + PIVOT + MAXDEP + CLID + CLID_ANC + stuff + terminating 0
 #define INFOBITS    2		// could be 1 for SAT, must be 2 for QBF
 #define DBIT        1
 #define ASSUMED     2
@@ -63,8 +64,41 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 inline int getc_unlocked(FILE* f) { return getc(f); }
 #endif
 
+using std::vector;
+using std::unordered_set;
+
+struct AncData {
+  AncData() {};
+  AncData(int64_t _cl_id, int64_t _conflict_num) :
+    cl_id (_cl_id),
+    conflict_num (_conflict_num)
+  {}
+
+  bool operator==(const AncData& other) const {
+    return cl_id == other.cl_id && conflict_num == other.conflict_num;
+  }
+
+  int64_t cl_id = -1;
+  int64_t conflict_num = -1;
+};
+
+namespace std
+{
+    template <>
+    struct hash<AncData>
+    {
+        size_t operator()(AncData const & x) const noexcept
+        {
+            return (
+                (51 + std::hash<int>()(x.cl_id)) * 51
+                + std::hash<int>()(x.conflict_num)
+            );
+        }
+    };
+}
+
 struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
-    int *DB, nVars, timeout, mask, delete, *falseStack, *false, *forced, binMode, binOutput,
+    int *DB, nVars, timeout, mask, deleted, *falseStack, *falsified, *forced, binMode, binOutput,
       *processed, *assigned, count, *used, *max, COREcount, RATmode, RATcount, nActive, *lratTable,
       nLemmas, maxRAT, *RATset, *preRAT, maxDependencies, nDependencies, bar, backforce, reduce,
       *dependencies, maxVar, maxSize, mode, verb, unitSize, prep, *current, nRemoved, warning,
@@ -80,11 +114,12 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
          nReads, nWrites, lratSize, lratAlloc, *lratLookup, **wlist, *optproof, *formula, *proof;
     long anc_assigned;
     long anc_anc_assigned;
+    vector<unordered_set<AncData>> anc_datas; //NOTE: the 0th element is not used!
 
 };
 
 static inline void assign (struct solver* S, int lit) {
-  S->false[-lit] = 1; *(S->assigned++) = -lit; }
+  S->falsified[-lit] = 1; *(S->assigned++) = -lit; }
 
 int compare (const void *a, const void *b) {
   return (*(int*)a - *(int*)b); }
@@ -105,17 +140,23 @@ void store_at(int* lemma, int64_t data) {
     *(lemma+1) = (data >> 32);
 }
 
-static inline void printClause (int* clause) {
+static inline void printClause (int* clause, solver* S) {
   //printf ("[%i] ", clause[ID]);
   //printf ("[id %li] ", get_at(clause, CLID));
-  uint64_t clause_id = get_at(clause, CLID);
-  uint64_t anc_clause_id = get_at(clause, CLID_ANC);
-  uint64_t anc_confl = get_at(clause, CONFLICT_NO_ANC);
+  int64_t clause_id = get_at(clause, CLID);
+  int64_t anc_data_at = get_at(clause, ANC_DATA_AT);
+
   uint64_t conflict_no = get_at(clause, CONFLICT_NO);
   printf("cl_id: %07ld", clause_id);
-  printf(" anc_cl_id: %07ld", anc_clause_id);
-  printf(" anc_conf: %07ld", anc_confl);
   printf(" conf: %07ld ", conflict_no);
+  if (anc_data_at != 0 && S != NULL) {
+    const auto& anc_data = S->anc_datas[anc_data_at];
+    for (const auto& d: anc_data) {
+      printf(" anc_cl_id: %07ld", d.cl_id);
+      printf(" anc_conf: %07ld", d.conflict_num);
+    }
+  }
+
 
   while (*clause) printf ("%i ", *clause++); printf ("0 ");
   printf("\n");
@@ -158,10 +199,10 @@ static inline void removeUnit (struct solver* S, int lit) {
 static inline void unassignUnit (struct solver* S, int lit) {
   if (S->verb)
     printf ("c removing unit %i\n", lit);
-  while (S->false[-lit]) {
+  while (S->falsified[-lit]) {
     if (S->verb)
       printf ("c removing unit %i (%i)\n", S->forced[-1], lit);
-    S->false[*(--S->forced)] = 0;
+    S->falsified[*(--S->forced)] = 0;
     S->reason[abs(*S->forced)] = 0; }
   S->processed = S->assigned = S->forced; }
 
@@ -176,43 +217,57 @@ static inline void addDependency (struct solver* S, int dep, int forced) {
     if (S->nDependencies == S->maxDependencies) {
       S->maxDependencies = (S->maxDependencies * 3) >> 1;
 //      printf ("c dependencies increased to %i\n", S->maxDependencies);
-      S->dependencies = realloc (S->dependencies, sizeof (int) * S->maxDependencies);
+      S->dependencies = (int*)realloc (S->dependencies, sizeof (int) * S->maxDependencies);
       if (S->dependencies == NULL) { printf ("c MEMOUT: dependencies reallocation failed\n"); exit (0); } }
 //    printf("c adding dep %i\n", (dep << 1) + forced);
     S->dependencies[S->nDependencies++] = (dep << 1) + forced; } }
 
 static inline void markClause (struct solver* S, int* clause, int index,
-                               int64_t conflict_no, int64_t *ret_cl_id,
-                               int64_t* ret_cl_confl) {
+                               int64_t conflict_no, unordered_set<AncData>* ret_anc_data) {
   S->nResolve++;
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
-  int64_t anc_clause_id = get_at(clause+index, CLID_ANC);
-  int64_t anc_conflict_no = get_at(clause+index, CONFLICT_NO_ANC);
-  if (anc_clause_id != 0 && S->anc_cl_used_file != NULL) {
-      int written;
-      written = fwrite(&anc_clause_id, sizeof(int64_t), 1, S->anc_cl_used_file);
+  //Dump that the ancestor(s) were used
+  int64_t anc_data_at = get_at(clause+index, ANC_DATA_AT);
+  if (anc_data_at != 0 && S->anc_cl_used_file != NULL) {
+    const auto& anc_data =S->anc_datas[anc_data_at];
+    int written;
+    for(const auto& d: anc_data) {
+      written = fwrite(&d.cl_id, sizeof(int64_t), 1, S->anc_cl_used_file);
       assert(written == 1);
-      written = fwrite(&anc_conflict_no, sizeof(int64_t), 1, S->anc_cl_used_file);
+      written = fwrite(&d.conflict_num, sizeof(int64_t), 1, S->anc_cl_used_file);
       assert(written == 1);
+
+      //set the ancestor(s) of the new clause the ancestors of this clause
+      if (ret_anc_data != NULL) {
+        S->anc_anc_assigned++;
+        ret_anc_data->insert(d);
+      }
+    }
   }
 
   int64_t clause_id = get_at(clause+index, CLID);
   if (clause_id != 0) {
       assert(conflict_no >= 0 && "RAT clauses, i.e. BVA cannot be used while tracking clause usefulness. There is some weird optimisation in drat-trim that marks these clauses as having been used at conflict number '-1'.... sorry, can't debug.");
-      if(ret_cl_id != NULL) {
+      if(ret_anc_data != NULL) {
           S->anc_assigned++;
-          *ret_cl_id = clause_id;
-          *ret_cl_confl = get_at(clause+index, CONFLICT_NO);
+          AncData d(clause_id, get_at(clause+index, CONFLICT_NO));
+          ret_anc_data->insert(d);
       }
-      if (S->cl_used_file != NULL) {
+      if (S->cl_used_file != NULL && S->anc_cl_used_file != NULL) {
           int written;
           written = fwrite(&clause_id, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
+          written = fwrite(&clause_id, sizeof(int64_t), 1, S->anc_cl_used_file);
+          assert(written == 1);
+
           written = fwrite(&conflict_no, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
+          written = fwrite(&conflict_no, sizeof(int64_t), 1, S->anc_cl_used_file);
+          assert(written == 1);
+
           if (S->verb) {
-            printf("c clause used at %ld: ", conflict_no); printClause(clause+index);
+            printf("c clause used at %ld: ", conflict_no); printClause(clause+index, S);
           }
       }
 
@@ -223,15 +278,8 @@ static inline void markClause (struct solver* S, int* clause, int index,
       assert(S->optimize || clause_creation_confl <= conflict_no);
   } else {
     if (S->verb) {
-      printf("c clause used at %ld: ", conflict_no);; printClause(clause+index);
+      printf("c clause used at %ld: ", conflict_no);; printClause(clause+index, S);
     }
-  }
-
-  //Still not set, set to ancestor if it exists (so we'll be ancestor's ancestor)
-  if(ret_cl_id != NULL && *ret_cl_id == -1 && anc_clause_id != 0) {
-      S->anc_anc_assigned++;
-      *ret_cl_id = anc_clause_id;
-      *ret_cl_confl = anc_conflict_no;
   }
 
   if ((clause[index + ID] & ACTIVE) == 0) {
@@ -243,29 +291,29 @@ static inline void markClause (struct solver* S, int* clause, int index,
     if (clause[1 + index] == 0) return;
     markWatch (S, clause,     index, -index);
     markWatch (S, clause, 1 + index, -index); }
-  while (*clause) S->false[*(clause++)] = MARK; }
+  while (*clause) S->falsified[*(clause++)] = MARK; }
 
 // Mark all clauses involved in conflict
 void analyze (struct solver* S, int* clause, int index, int64_t conflict_no,
-              int64_t* ret_cl_id, int64_t* ret_cl_confl) {
+              unordered_set<AncData>* ret_anc_data) {
 
-  markClause (S, clause, index, conflict_no, NULL, NULL);
+  markClause (S, clause, index, conflict_no, NULL);
   while (S->assigned > S->falseStack) {
     int lit = *(--S->assigned);
-    if (S->false[lit] == MARK) {
+    if (S->falsified[lit] == MARK) {
       if (S->reason[abs (lit)]) {
         markClause (S, S->DB + S->reason[abs (lit)], -1, conflict_no,
-                    ret_cl_id, ret_cl_confl);
+                    ret_anc_data);
         if (S->assigned >= S->forced)
           S->reason[abs (lit)] = 0; } }
-    else if (S->false[lit] == ASSUMED && !S->RATmode && S->reduce && !S->lratFile) { // Remove unused literal
+    else if (S->falsified[lit] == ASSUMED && !S->RATmode && S->reduce && !S->lratFile) { // Remove unused literal
       S->nRemoved++;
       int *tmp = S->current;
       while (*tmp != lit) tmp++;
       while (*tmp) { tmp[0] = tmp[1]; tmp++; }
       tmp[-1] = 0; }
     if (S->assigned >= S->forced) S->reason[abs (lit)] = 0;
-    S->false[lit] = (S->assigned < S->forced); }
+    S->falsified[lit] = (S->assigned < S->forced); }
 
   S->processed = S->assigned = S->forced; }
 
@@ -273,12 +321,12 @@ void noAnalyze (struct solver* S) {
   while (S->assigned > S->falseStack) {
     int lit = *(--S->assigned);
     if (S->assigned >= S->forced) S->reason[abs (lit)] = 0;
-    S->false[lit] = (S->assigned < S->forced); }
+    S->falsified[lit] = (S->assigned < S->forced); }
 
   S->processed = S->assigned = S->forced; }
 
 int propagate (struct solver* S, int init, int mark, int64_t conflict_no,
-               int64_t *ret_cl_id, int64_t *ret_cl_confl)
+               unordered_set<AncData>* ret_anc_data)
 { // Performs unit propagation (init not used?)
   int *start[2];
   int check = 0, mode = !S->prep;
@@ -294,19 +342,19 @@ int propagate (struct solver* S, int init, int mark, int64_t conflict_no,
      if ((*watch & mode) != check) {
         watch++; continue; }
      int *clause = S->DB + (*watch >> 1);	       // Get the clause from DB
-     if (S->false[ -clause[0] ] ||
-         S->false[ -clause[1] ]) {
+     if (S->falsified[ -clause[0] ] ||
+         S->falsified[ -clause[1] ]) {
        watch++; continue; }
      if (clause[0] == lit) clause[0] = clause[1];      // Ensure that the other watched literal is in front
      for (i = 2; clause[i]; ++i)                       // Scan the non-watched literals
-        if (S->false[ clause[i] ] == 0) {              // When clause[j] is not false, it is either true or unset
+        if (S->falsified[ clause[i] ] == 0) {              // When clause[j] is not false, it is either true or unset
           clause[1] = clause[i]; clause[i] = lit;      // Swap literals
           addWatchPtr (S, clause[1], *watch);          // Add the watch to the list of clause[1]
           *watch = S->wlist[lit][ --S->used[lit] ];    // Remove pointer
           S->wlist[lit][ S->used[lit] ] = END;
           goto next_clause; }                          // Goto the next watched clause
       clause[1] = lit; watch++;                        // Set lit at clause[1] and set next watch
-      if (!S->false[  clause[0] ]) {                   // If the other watched literal is falsified,
+      if (!S->falsified[  clause[0] ]) {                   // If the other watched literal is falsified,
         assign (S, clause[0]);                         // A unit clause is found, and the reason is set
         S->reason[abs (clause[0])] = ((long) ((clause)-S->DB)) + 1;
         if (!check) {
@@ -314,7 +362,7 @@ int propagate (struct solver* S, int init, int mark, int64_t conflict_no,
           goto flip_check; } }
       else if (!mark) { noAnalyze (S); return UNSAT; }
       else {
-          analyze (S, clause, 0, conflict_no, ret_cl_id, ret_cl_confl);
+          analyze (S, clause, 0, conflict_no, ret_anc_data);
           return UNSAT; }   // Found a root level conflict -> UNSAT
       next_clause: ; } }                               // Set position for next clause
   if (check) goto flip_check;
@@ -327,7 +375,7 @@ static inline int propagateUnits (struct solver* S, int init) {
   int i;
 //  printf("c propagateUnits %i\n", S->unitSize);
   while (S->forced > S->falseStack) {
-    S->false[*(--S->forced)] = 0;
+    S->falsified[*(--S->forced)] = 0;
     S->reason[abs (*S->forced)] = 0; }
   S->forced = S->assigned = S->processed = S->falseStack;
   for (i = 0; i < S->unitSize; i++) {
@@ -335,7 +383,7 @@ static inline int propagateUnits (struct solver* S, int init) {
     S->reason[abs (lit)] = S->unitStack[i] + 1;
     assign (S, lit); }
 
-  if (propagate (S, init, 1, -1, NULL, NULL) == UNSAT) { return UNSAT; }
+  if (propagate (S, init, 1, -1, NULL) == UNSAT) { return UNSAT; }
   S->forced = S->processed;
   return SAT; }
 
@@ -345,8 +393,8 @@ int sortSize (struct solver *S, int *lemma) {
   unsigned int size = 0, last = 0, sat = 1;
   while (lemma[last]) {
     int lit = lemma[last++];
-    if (S->false[lit] == 0) {
-      if (S->false[-lit]) sat = -1;
+    if (S->falsified[lit] == 0) {
+      if (S->falsified[-lit]) sat = -1;
       lemma[last-1] = lemma[ size ];
       lemma[size++] = lit; } }
   return sat * size; }
@@ -582,14 +630,15 @@ void printDependenciesFile (struct solver *S, int* clause, int RATflag, int mode
     for (i = 0; i < S->nDependencies; i++)
       if (S->dependencies[i] < 0) { isRUP = 0; break; }
 
+    int size = 0;
     if (isRUP) {
       for (i = S->nDependencies - 1; i >= 0; i--)
         lratAdd (S, S->dependencies[i] >> 1);
       lratAdd (S, 0);
-      goto printLine; }
+      goto printLine;
+    }
 
     // first print the preRAT units in order of becoming unit
-    int size = 0;
     for (i = 0; i < S->nDependencies; i++) {
       if (S->dependencies[i] > 0) continue;
       for (j = i - 1; j >= 0 && S->dependencies[j] > 0; j--) {
@@ -615,7 +664,7 @@ void printDependenciesFile (struct solver *S, int* clause, int RATflag, int mode
           lratAdd (S, cls >> 1); } }
       if ((mode == 1) && (cls & 1))
         lratAdd (S, cls >> 1); }
-      lratAdd (S, 0);
+    lratAdd (S, 0);
 
     printLine:;
     if (mode == 0) {
@@ -659,7 +708,7 @@ int checkRAT (struct solver *S, int pivot, int mark) {
               continue; }
 	    if (nRAT == S->maxRAT) {
 	      S->maxRAT = (S->maxRAT * 3) >> 1;
-	      S->RATset = realloc (S->RATset, sizeof (int) * S->maxRAT);
+	      S->RATset = (int*)realloc (S->RATset, sizeof (int) * S->maxRAT);
               assert (S->RATset != NULL); }
 	    S->RATset[nRAT++] = S->wlist[i][j] >> 1;
             break; } } } }
@@ -675,30 +724,30 @@ int checkRAT (struct solver *S, int pivot, int mark) {
     int blocked = 0;
     long int reason  = 0;
     if (S->verb) {
-      printf ("c RAT clause: "); printClause (RATcls); }
+      printf ("c RAT clause: "); printClause (RATcls, S); }
 
     while (*RATcls) {
       int lit = *RATcls++;
-      if (lit != -pivot && S->false[-lit])
+      if (lit != -pivot && S->falsified[-lit])
         if (!blocked || reason > S->reason[abs (lit)])
           blocked = lit, reason = S->reason[abs (lit)]; }
 
     if (blocked && reason) {
-      analyze (S, S->DB + reason, -1, -1, NULL, NULL);
+      analyze (S, S->DB + reason, -1, -1, NULL);
       S->reason[abs (blocked)] = 0; }
 
     if (!blocked) {
       RATcls = S->DB + S->RATset[i];
       while (*RATcls) {
         int lit = *RATcls++;
-        if (lit != -pivot && !S->false[lit]) {
+        if (lit != -pivot && !S->falsified[lit]) {
           assign (S, -lit); S->reason[abs (lit)] = 0; } }
-      if (propagate (S, 0, mark, -1, NULL, NULL) == SAT) { flag  = 0; break; } }
+      if (propagate (S, 0, mark, -1, NULL) == SAT) { flag  = 0; break; } }
     addDependency (S, -id, 1); }
 
   if (flag == 0) {
     while (S->forced < S->assigned) {
-      S->false[*(--S->assigned)] = 0;
+      S->falsified[*(--S->assigned)] = 0;
       S->reason[abs (*S->assigned)] = 0; }
     if (S->verb) printf ("c RAT check on pivot %i failed\n", pivot);
     return FAILED; }
@@ -868,8 +917,8 @@ int setRedundancyCheck (struct solver *S, int *clause, int size, int uni) {
 
 int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
   int i, indegree;
-  int falsePivot = S->false[clause[PIVOT]];
-  if (S->verb) { printf ("c checking lemma (%i, %i) ", size, clause[PIVOT]); printClause (clause); }
+  int falsePivot = S->falsified[clause[PIVOT]];
+  if (S->verb) { printf ("c checking lemma (%i, %i) ", size, clause[PIVOT]); printClause (clause, S); }
 
   if (S->mode != FORWARD_UNSAT) {
     if ((clause[ID] & ACTIVE) == 0) return SUCCESS; }  // redundant?
@@ -884,23 +933,22 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
   S->RATmode = 0;
   S->nDependencies = 0;
   for (i = 0; i < size; ++i) {
-    if (S->false[-clause[i]]) { // should only occur in forward mode
+    if (S->falsified[-clause[i]]) { // should only occur in forward mode
       if (S->warning != NOWARNING) {
-        printf ("c WARNING: found a tautological clause in proof: "); printClause (clause); }
+        printf ("c WARNING: found a tautological clause in proof: "); printClause (clause, S); }
       if (S->warning == HARDWARNING) exit (HARDWARNING);
       while (S->forced < S->assigned) {
-        S->false[*(--S->assigned)] = 0;
+        S->falsified[*(--S->assigned)] = 0;
         S->reason[abs (*S->assigned)] = 0; }
       return SUCCESS; }
-    S->false[clause[i]] = ASSUMED;
+    S->falsified[clause[i]] = ASSUMED;
     *(S->assigned++) = clause[i];
     S->reason[abs (clause[i])] = 0; }
 
   S->current = clause;
-  int64_t ret_cl_id = -1;
-  int64_t ret_cl_confl = -1;
+  unordered_set<AncData> ret_anc_data;
   if (propagate (S, 0, mark, get_at(clause, CONFLICT_NO),
-      &ret_cl_id, &ret_cl_confl) == UNSAT) {
+      &ret_anc_data) == UNSAT) {
     indegree = S->nResolve - indegree;
     if (indegree <= 2 && S->prep == 0) {
       S->prep = 1; if (S->verb) printf ("c [%li] preprocessing checking mode on\n", S->time); }
@@ -909,17 +957,26 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     if (S->verb) printf ("c lemma has RUP\n");
     printDependencies (S, clause, 0);
 
-    uint64_t clid_this = get_at(clause, CLID);
-    if (ret_cl_id != -1 &&
-      ret_cl_id != 0 &&
-      ret_cl_id != clid_this)
-    {
+    int64_t clid_this = get_at(clause, CLID);
+    int64_t conflict_num_this = get_at(clause, CONFLICT_NO);
+    //Remove elements that are the same as clid_this
+    size_t b = 0;
+    AncData d(clid_this, conflict_num_this);
+    auto it = ret_anc_data.find(d);
+    if (it != ret_anc_data.end()) {
+      ret_anc_data.erase(it);
+    }
+
+    if (!ret_anc_data.empty()) {
       if (S->verb) {
-          printf("Set ancestor of CLID %07ld : %07ld confl %07ld\n", clid_this, ret_cl_id, ret_cl_confl);
+          printf("Set ancestor(s) of CLID %07ld: ", clid_this);
+          for(const auto& d: ret_anc_data) {
+            printf("clid: %07ld confl: %07ld, ", d.cl_id, d.conflict_num);
+          }
+          printf("\n");
       }
-      store_at(clause+CLID_ANC, ret_cl_id);
-      store_at(clause+CONFLICT_NO_ANC, ret_cl_confl);
-      assert(get_at(clause, CLID_ANC) == ret_cl_id);
+      S->anc_datas.push_back(ret_anc_data);
+      store_at(clause+ANC_DATA_AT, S->anc_datas.size()-1);
     }
     return SUCCESS; }
 
@@ -940,7 +997,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
   if (checkRAT (S, reslit, mark) == FAILED) {
     failed = 1;
     if (S->warning != NOWARNING) {
-      printf ("c WARNING: RAT check on proof pivot failed : "); printClause (clause); }
+      printf ("c WARNING: RAT check on proof pivot failed : "); printClause (clause, S); }
     if (S->warning == HARDWARNING) exit (HARDWARNING);
     for (i = 0; i < size; i++) {
       if (clause[i] == reslit) continue;
@@ -953,7 +1010,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
 
   S->processed = S->forced = savedForced;
   while (S->forced < S->assigned) {
-    S->false[*(--S->assigned)] = 0;
+    S->falsified[*(--S->assigned)] = 0;
     S->reason[abs (*S->assigned)] = 0; }
 
   if (failed) {
@@ -984,7 +1041,7 @@ int init (struct solver *S) {
   for (i = 1; i <= S->maxVar; ++i) {
     S->reason    [i]                 = 0;
     S->falseStack[i]                 = 0;
-    S->false[i]    = S->false[-i]    = 0;
+    S->falsified[i]    = S->falsified[-i]    = 0;
     S->used [i]    = S->used [-i]    = 0;
     S->wlist[i][0] = S->wlist[-i][0] = END; }
 
@@ -1005,7 +1062,7 @@ int init (struct solver *S) {
       return UNSAT;
     }
     if (clause[1]) { addWatch (S, clause, 0); addWatch (S, clause, 1); }
-    else if (S->false[clause[0]]) {
+    else if (S->falsified[clause[0]]) {
       printf ("c found complementary unit clauses\n");
       if (S->coreStr) {
         FILE *coreFile = fopen (S->coreStr, "w");
@@ -1022,7 +1079,7 @@ int init (struct solver *S) {
           if ((_clause[0] == -clause[0]) && !_clause[1]) break; }
         fprintf (S->lratFile, "%li 0 %i %i 0\n", S->nClauses + 1, j + 1, i + 1); }
       return UNSAT; }
-    else if (!S->false[ -clause[0] ]) {
+    else if (!S->falsified[ -clause[0] ]) {
       addUnit (S, (long) (clause - S->DB));
       assign (S, clause[0]); } }
 
@@ -1073,16 +1130,18 @@ int verify (struct solver *S, int begin, int end) {
         if (S->mode == FORWARD_SAT) {
           removeUnit (S, lit); propagateUnits (S, 0); }
         else { // no need to remove units while checking UNSAT
-          if (S->verb) { printf("c removing proof step: d "); printClause(lemmas); }
+          if (S->verb) { printf("c removing proof step: d ");
+            printClause(lemmas, S); }
           S->proof[step] = 0; continue; } }
       else {
-        if (S->mode == BACKWARD_UNSAT && S->false[-lit]) { S->proof[step] = 0; continue; }
+        if (S->mode == BACKWARD_UNSAT && S->falsified[-lit]) { S->proof[step] = 0; continue; }
         else { addUnit (S, (long) (lemmas - S->DB)); } } }
 
     if (d && lemmas[1]) { // if delete and not unit
       if ((S->reason[abs (lemmas[0])] - 1) == (lemmas - S->DB)) { // what is this check?
         if (S->mode != FORWARD_SAT) { // ignore pseudo unit clause deletion
-          if (S->verb) { printf ("c ignoring deletion intruction %07li: ", (lemmas - S->DB)); printClause (lemmas); }
+          if (S->verb) { printf ("c ignoring deletion intruction %07li: ", (lemmas - S->DB));
+            printClause (lemmas, S); }
 //        if (S->mode == BACKWARD_UNSAT) { // ignore pseudo unit clause deletion
           S->proof[step] = 0; }
         else { // if (S->mode == FORWARD_SAT) { // also for FORWARD_UNSAT?
@@ -1122,7 +1181,7 @@ int verify (struct solver *S, int begin, int end) {
       int64_t conflict_no = get_at(lemmas, CONFLICT_NO);
       //printf("unit ID %d\n", clause_id);
       assign (S, lemmas[0]); S->reason[abs (lemmas[0])] = ((long) ((lemmas)-S->DB)) + 1;
-      if (propagate (S, 1, 1, conflict_no, NULL, NULL) == UNSAT) goto start_verification;
+      if (propagate (S, 1, 1, conflict_no, NULL) == UNSAT) goto start_verification;
       S->forced = S->processed; } }
 
   if (S->mode == FORWARD_SAT && active == 0) {
@@ -1198,7 +1257,7 @@ int verify (struct solver *S, int begin, int end) {
 
     //LSB bit of "S->proof[step]"
     if ( d == 0) {
-      if (S->verb) {printf("d was zero for: "); printClause (clause);}
+      if (S->verb) {printf("d was zero for: "); printClause (clause, S);}
       adds--;
       if (clause[1]) {
         removeWatch (S, clause, 0), removeWatch (S, clause, 1);
@@ -1209,14 +1268,14 @@ int verify (struct solver *S, int begin, int end) {
     int size = sortSize (S, clause);
 
     if (d) {
-      if (S->verb) { printf ("c adding clause (%i) ", size); printClause (clause); }
+      if (S->verb) { printf ("c adding clause (%i) ", size); printClause (clause, S); }
       addWatch (S, clause, 0), addWatch (S, clause, 1); continue; }
 
     S->time = clause[ID];
     if ((S->time & ACTIVE) == 0) {
       skipped++;
 //      if ((skipped % 100) == 0) printf("c skipped %i, checked %i\n", skipped, checked);
-      if (S->verb) {printf("c Skipping: "); printClause (clause);}
+      if (S->verb) {printf("c Skipping: "); printClause (clause, S);}
       continue; } // If not marked, continue
 
     assert (size >= 1);
@@ -1225,7 +1284,7 @@ int verify (struct solver *S, int begin, int end) {
     clause[size] = 0;
 
     if (S->verb) {
-      printf ("c validating clause (%i, %i):  ", clause[PIVOT], size); printClause (clause); }
+      printf ("c validating clause (%i, %i):  ", clause[PIVOT], size); printClause (clause, S); }
 /*
     int i;
     if (size > 1 && (top_flag == 1)) {
@@ -1291,20 +1350,24 @@ long matchClause (struct solver* S, long *clauselist, int listsize, int* input, 
   int i, j;
   for (i = 0; i < listsize; ++i) {
     int *clause = S->DB + clauselist[i];
-    for (j = 0; j <= size; j++)
+    long result;
+    for (j = 0; j <= size; j++) {
       if (clause[j] != input[j]) goto match_next;
+    }
 
-    long result = clauselist[i];
+    result = clauselist[i];
     clauselist[i] = clauselist[--listsize];
     return result;
-    match_next:; }
+
+    match_next:;
+  }
   return 0; }
 
 unsigned int getHash (int* input) {
-  unsigned int sum = 0, prod = 1, xor = 0;
+  unsigned int sum = 0, prod = 1, myxor = 0;
   while (*input) {
-    prod *= *input; sum += *input; xor ^= *input; input++; }
-  return (1023 * sum + prod ^ (31 * xor)) % BIGINIT; }
+    prod *= *input; sum += *input; myxor ^= *input; input++; }
+  return (1023 * sum + prod ^ (31 * myxor)) % BIGINIT; }
 
 int read_lit (struct solver *S, int *lit) {
   int l = 0, lc, shift = 0;
@@ -1516,8 +1579,8 @@ int parse (struct solver* S) {
       //deleting unit
       if (del && S->mode == BACKWARD_UNSAT && size <= 1)  {
         if (S->warning != NOWARNING) {
-          printf ("c WARNING: backward mode ignores deletion of (pseudo) unit clause ");
-          printClause (buffer); }
+          printf ("c WARNING: backward mode ignores deletion of (pseudo) unit clause\n");
+          /*printClause (buffer, NULL);*/ }
         if (S->warning == HARDWARNING) exit (HARDWARNING);
         del = 0; size = 0; continue; }
       int rem = buffer[0];
@@ -1526,12 +1589,13 @@ int parse (struct solver* S) {
 
       //deleting long clause
       if (del) {
-        if (S->delete) {
+        if (S->deleted) {
           long match = 0;
             match = matchClause (S, hashTable[hash], hashUsed[hash], buffer, size);
             if (match == 0) {
               if (S->warning != NOWARNING) {
-                printf ("c WARNING: deleted clause on line %i does not occur: ", fileLine); printClause (buffer); }
+                printf ("c WARNING: deleted clause on line %i does not occur: ", fileLine);
+                printClause (buffer, NULL); }
               if (S->warning == HARDWARNING) exit (HARDWARNING);
               goto end_delete; }
             if (S->mode == FORWARD_SAT) S->DB[ match - 2 ] = rem;
@@ -1555,6 +1619,7 @@ int parse (struct solver* S) {
       clause[ID] = 2 * S->count; S->count++;
       store_at(clause+CLID, clause_id);
       store_at(clause+CONFLICT_NO, conflict_no);
+      store_at(clause+ANC_DATA_AT, 0);
       if (S->mode == FORWARD_SAT) if (nZeros > 0) clause[ID] |= ACTIVE;
 
       for (i = 0; i < size; ++i) { clause[ i ] = buffer[ i ]; } clause[ i ] = 0;
@@ -1594,7 +1659,7 @@ int parse (struct solver* S) {
       for (j = 0; j < hashUsed[i]; j++) {
         printf ("c ");
         int *clause = S->DB + hashTable [i][j];
-        printClause (clause);
+        printClause (clause, S);
         if (S->nStep == S->nAlloc) { S->nAlloc = (S->nAlloc * 3) >> 1;
           S->proof = (long*) realloc (S->proof, sizeof (long) * S->nAlloc);
 //          printf ("c proof allocation increased to %li\n", S->nAlloc);
@@ -1618,7 +1683,7 @@ int parse (struct solver* S) {
   S->reason     = (long *) malloc ((    n + 1) * sizeof (long)); // Array of clauses
   S->used       = (int  *) malloc ((2 * n + 1) * sizeof (int )); S->used     += n; // Labels for variables, non-zero means false
   S->max        = (int  *) malloc ((2 * n + 1) * sizeof (int )); S->max      += n; // Labels for variables, non-zero means false
-  S->false      = (int  *) malloc ((2 * n + 1) * sizeof (int )); S->false    += n; // Labels for variables, non-zero means false
+  S->falsified      = (int  *) malloc ((2 * n + 1) * sizeof (int )); S->falsified    += n; // Labels for variables, non-zero means false
   S->setMap     = (int  *) malloc ((2 * n + 1) * sizeof (int )); S->setMap   += n; // Labels for variables, non-zero means false
   S->setTruth   = (int  *) malloc ((2 * n + 1) * sizeof (int )); S->setTruth += n; // Labels for variables, non-zero means false
 
@@ -1667,7 +1732,7 @@ void freeMemory (struct solver *S) {
   for (i = 1; i <= S->maxVar; ++i) { free (S->wlist[i]); free (S->wlist[-i]); }
   free (S->used  - S->maxVar);
   free (S->max   - S->maxVar);
-  free (S->false - S->maxVar);
+  free (S->falsified - S->maxVar);
   free (S->wlist - S->maxVar);
   free (S->RATset);
   free (S->dependencies);
@@ -1734,7 +1799,7 @@ int main (int argc, char** argv) {
   S.prep       = 0;
   S.bar        = 0;
   S.mode       = BACKWARD_UNSAT;
-  S.delete     = 1;
+  S.deleted     = 1;
   S.reduce     = 1;
   S.binMode    = 1;
   S.binOutput  = 0;
@@ -1744,6 +1809,7 @@ int main (int argc, char** argv) {
   S.anc_assigned = 0;
   S.anc_anc_assigned = 0;
   S.start_time = cpuTime();
+  S.anc_datas.resize(1); //the 0th is ignored
 
   int i, tmp = 0;
   for (i = 1; i < argc; i++) {
@@ -1766,7 +1832,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'v') S.verb       = 1;
       else if (argv[i][1] == 'w') S.warning    = NOWARNING;
       else if (argv[i][1] == 'W') S.warning    = HARDWARNING;
-      else if (argv[i][1] == 'p') S.delete     = 0;
+      else if (argv[i][1] == 'p') S.deleted     = 0;
       else if (argv[i][1] == 'R') S.reduce     = 0;
       else if (argv[i][1] == 'f') S.mode       = FORWARD_UNSAT;
       else if (argv[i][1] == 'S') S.mode       = FORWARD_SAT; }
@@ -1819,6 +1885,7 @@ int main (int argc, char** argv) {
   printf ("c verification time: %.3f seconds\n", runtime);
 
   if (S.optimize) {
+    double myTime = cpuTime();
     printf("c proof optimization started (ignoring the timeout)\n");
     while (S.nRemoved && S.opt_iteration < S.optimize) {
       printf("[opt] iteration %d ---- \n", S.opt_iteration);
@@ -1827,7 +1894,9 @@ int main (int argc, char** argv) {
       deactivate (&S);
       shuffleProof (&S, S.opt_iteration);
       S.opt_iteration++;
-      verify_wrap_cl_used (&S, 0, 0); } }
+      verify_wrap_cl_used (&S, 0, 0);
+      printf("c Time used: %lf\n", (cpuTime()-myTime));
+    } }
 
   freeMemory (&S);
   return (sts != UNSAT); // 0 on success, 1 on any failure
