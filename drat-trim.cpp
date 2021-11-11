@@ -69,17 +69,19 @@ using std::unordered_set;
 
 struct AncData {
   AncData() {};
-  AncData(int64_t _cl_id, int64_t _conflict_num) :
+  AncData(int64_t _cl_id, int64_t _conflict_num, uint32_t _depth) :
     cl_id (_cl_id),
-    conflict_num (_conflict_num)
+    conflict_num (_conflict_num),
+    depth(_depth)
   {}
 
   bool operator==(const AncData& other) const {
-    return cl_id == other.cl_id && conflict_num == other.conflict_num;
+    return cl_id == other.cl_id;
   }
 
   int64_t cl_id = -1;
   int64_t conflict_num = -1;
+  uint32_t depth;
 };
 
 namespace std
@@ -90,8 +92,7 @@ namespace std
         size_t operator()(AncData const & x) const noexcept
         {
             return (
-                (51 + std::hash<int>()(x.cl_id)) * 51
-                + std::hash<int>()(x.conflict_num)
+                std::hash<int>()(x.cl_id)
             );
         }
     };
@@ -152,8 +153,9 @@ static inline void printClause (int* clause, solver* S) {
   if (anc_data_at != 0 && S != NULL) {
     const auto& anc_data = S->anc_datas[anc_data_at];
     for (const auto& d: anc_data) {
-      printf(" anc_cl_id: %07ld", d.cl_id);
-      printf(" anc_conf: %07ld", d.conflict_num);
+      printf("anc_cl_id: %07ld ", d.cl_id);
+      printf("anc_conf: %07ld ", d.conflict_num);
+      printf("anc_depth: %07u ", d.depth);
     }
   }
 
@@ -237,11 +239,16 @@ static inline void markClause (struct solver* S, int* clause, int index,
       assert(written == 1);
       written = fwrite(&d.conflict_num, sizeof(int64_t), 1, S->anc_cl_used_file);
       assert(written == 1);
+      written = fwrite(&d.depth, sizeof(uint32_t), 1, S->anc_cl_used_file);
+      assert(written == 1);
 
       //set the ancestor(s) of the new clause the ancestors of this clause
+      //but increment depth
       if (ret_anc_data != NULL) {
         S->anc_anc_assigned++;
-        ret_anc_data->insert(d);
+        AncData d2(d);
+        d2.depth++;
+        ret_anc_data->insert(d2);
       }
     }
   }
@@ -251,19 +258,24 @@ static inline void markClause (struct solver* S, int* clause, int index,
       assert(conflict_no >= 0 && "RAT clauses, i.e. BVA cannot be used while tracking clause usefulness. There is some weird optimisation in drat-trim that marks these clauses as having been used at conflict number '-1'.... sorry, can't debug.");
       if(ret_anc_data != NULL) {
           S->anc_assigned++;
-          AncData d(clause_id, get_at(clause+index, CONFLICT_NO));
+          AncData d(clause_id, get_at(clause+index, CONFLICT_NO), 1);
           ret_anc_data->insert(d);
       }
       if (S->cl_used_file != NULL && S->anc_cl_used_file != NULL) {
           int written;
           written = fwrite(&clause_id, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
-          written = fwrite(&clause_id, sizeof(int64_t), 1, S->anc_cl_used_file);
-          assert(written == 1);
-
           written = fwrite(&conflict_no, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
+
+
+          //Also write depth for anc file
+          uint32_t depth = 0;
+          written = fwrite(&clause_id, sizeof(int64_t), 1, S->anc_cl_used_file);
+          assert(written == 1);
           written = fwrite(&conflict_no, sizeof(int64_t), 1, S->anc_cl_used_file);
+          assert(written == 1);
+          written = fwrite(&depth, sizeof(uint32_t), 1, S->anc_cl_used_file);
           assert(written == 1);
 
           if (S->verb) {
@@ -961,7 +973,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     int64_t conflict_num_this = get_at(clause, CONFLICT_NO);
     //Remove elements that are the same as clid_this
     size_t b = 0;
-    AncData d(clid_this, conflict_num_this);
+    AncData d(clid_this, conflict_num_this, 1);
     auto it = ret_anc_data.find(d);
     if (it != ret_anc_data.end()) {
       ret_anc_data.erase(it);
