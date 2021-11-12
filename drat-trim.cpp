@@ -26,6 +26,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdint.h>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #define __STDC_FORMAT_MACROS
 #include "time_mem.h"
 
@@ -66,6 +67,22 @@ inline int getc_unlocked(FILE* f) { return getc(f); }
 
 using std::vector;
 using std::unordered_set;
+using std::unordered_map;
+
+struct HitData {
+  HitData(int64_t _cl_id, int64_t _conflict_num) :
+    cl_id(_cl_id), conflict_num(_conflict_num)
+  {}
+
+  HitData();
+
+  bool operator == (const HitData& other) const {
+    return cl_id == other.cl_id && conflict_num == other.conflict_num;
+  }
+
+  int64_t cl_id = -1;
+  int64_t conflict_num = -1;
+};
 
 struct AncData {
   AncData() {};
@@ -96,6 +113,18 @@ namespace std
             );
         }
     };
+
+    template <>
+    struct hash<HitData>
+    {
+        size_t operator()(HitData const & x) const noexcept
+        {
+            return (
+                (51 + std::hash<int>()(x.cl_id)) * 51
+                + std::hash<int>()(x.conflict_num)
+            );
+        }
+    };
 }
 
 struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
@@ -116,6 +145,7 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
     long anc_assigned;
     long anc_anc_assigned;
     vector<unordered_set<AncData>> anc_datas; //NOTE: the 0th element is not used!
+    unordered_map<HitData, float> hitdata;
 
 };
 
@@ -229,18 +259,18 @@ static inline void markClause (struct solver* S, int* clause, int index,
   S->nResolve++;
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
-  //Dump that the ancestor(s) were used
+  //Take care that the ancestor(s) were used
   int64_t anc_data_at = get_at(clause+index, ANC_DATA_AT);
   if (anc_data_at != 0 && S->anc_cl_used_file != NULL) {
     const auto& anc_data =S->anc_datas[anc_data_at];
-    int written;
     for(const auto& d: anc_data) {
-      written = fwrite(&d.cl_id, sizeof(int64_t), 1, S->anc_cl_used_file);
-      assert(written == 1);
-      written = fwrite(&d.conflict_num, sizeof(int64_t), 1, S->anc_cl_used_file);
-      assert(written == 1);
-      written = fwrite(&d.depth, sizeof(uint32_t), 1, S->anc_cl_used_file);
-      assert(written == 1);
+      HitData d2(d.cl_id, d.conflict_num);
+      auto it = S->hitdata.find(d2);
+      if (it != S->hitdata.end()) {
+        it->second+=std::pow(0.8, d.depth);
+      } else {
+        S->hitdata[d2] = std::pow(0.8, d.depth);
+      }
 
       //set the ancestor(s) of the new clause the ancestors of this clause
       //but increment depth
@@ -268,15 +298,15 @@ static inline void markClause (struct solver* S, int* clause, int index,
           written = fwrite(&conflict_no, sizeof(int64_t), 1, S->cl_used_file);
           assert(written == 1);
 
+          //direct parent
+          HitData d2(clause_id, conflict_no);
+          auto it = S->hitdata.find(d2);
+          if (it != S->hitdata.end()) {
+            it->second+=1.0;
+          } else {
+            S->hitdata[d2] = 1.0;
+          }
 
-          //Also write depth for anc file
-          uint32_t depth = 0;
-          written = fwrite(&clause_id, sizeof(int64_t), 1, S->anc_cl_used_file);
-          assert(written == 1);
-          written = fwrite(&conflict_no, sizeof(int64_t), 1, S->anc_cl_used_file);
-          assert(written == 1);
-          written = fwrite(&depth, sizeof(uint32_t), 1, S->anc_cl_used_file);
-          assert(written == 1);
 
           if (S->verb) {
             printf("c clause used at %ld: ", conflict_no); printClause(clause+index, S);
@@ -1324,8 +1354,8 @@ int verify (struct solver *S, int begin, int end) {
   postprocess (S);
   return UNSAT; }
 
-int verify_wrap_cl_used(struct solver *S, int begin, int end) {
-  if (S->usedClFname != NULL) {
+int verify_wrap_cl_used(struct solver *S, int begin, int end, int write = 0) {
+  if (write && S->usedClFname != NULL) {
       printf("-> iter %d printing used_clauses to file '%s-%d'\n",
            S->opt_iteration, S->usedClFname, S->opt_iteration);
 
@@ -1346,14 +1376,27 @@ int verify_wrap_cl_used(struct solver *S, int begin, int end) {
       }
   }
 
+  S->hitdata.clear();
   int ret = verify(S, begin, end);
+  printf("Hit data size: %ld\n",  S->hitdata.size());
 
-  if (S->usedClFname != NULL) {
-      fclose(S->cl_used_file);
-      S->cl_used_file = NULL;
+  if (write) {
+    int written;
+    for(const auto& d: S->hitdata) {
+        written = fwrite(&d.first.cl_id, sizeof(int64_t), 1, S->anc_cl_used_file);
+        assert(written == 1);
+        written = fwrite(&d.first.conflict_num, sizeof(int64_t), 1, S->anc_cl_used_file);
+        assert(written == 1);
+        written = fwrite(&d.second, sizeof(float), 1, S->anc_cl_used_file);
+    }
 
-      fclose(S->anc_cl_used_file);
-      S->anc_cl_used_file = NULL;
+    if (S->usedClFname != NULL) {
+        fclose(S->cl_used_file);
+        S->cl_used_file = NULL;
+
+        fclose(S->anc_cl_used_file);
+        S->anc_cl_used_file = NULL;
+    }
   }
   return ret;
 }
@@ -1422,15 +1465,16 @@ void shuffleProof (struct solver *S, int iteration) {
     base *= 1.5;
 
   // randomly remove clause deletion steps
-  for (_step = 0, step = 0; step < S->nStep; step++) {
-    if (S->proof[step] & 1) {
-      int length = 0;
-      int *clause = S->DB + (S->proof[step] >> INFOBITS);
-      while (*clause) { length++; clause++; }
-      if ((rand() % 50) < (base * iteration / sqrt((double)length))) continue; }
-    S->proof[_step++] = S->proof[step]; }
-  S->nStep = _step;
+//   for (_step = 0, step = 0; step < S->nStep; step++) {
+//     if (S->proof[step] & 1) {
+//       int length = 0;
+//       int *clause = S->DB + (S->proof[step] >> INFOBITS);
+//       while (*clause) { length++; clause++; }
+//       if ((rand() % 50) < (base * iteration / sqrt((double)length))) continue; }
+//     S->proof[_step++] = S->proof[step]; }
+//   S->nStep = _step;
 
+  //Switch around proof steps
   for (step = S->nStep - 1; step > 0; step--) {
     long a = S->proof[step  ];
     if (a & DBIT) continue;
@@ -1450,6 +1494,7 @@ void shuffleProof (struct solver *S, int iteration) {
         S->proof[step  ] = b;
         S->proof[step-1] = a; } } }
 
+  // Shuffles steps
   for (step = 0; step < S->nStep; step++) {
     long ad = S->proof[step];
     if (ad & 1) continue;
@@ -1459,7 +1504,8 @@ void shuffleProof (struct solver *S, int iteration) {
     clause = S->DB + (ad >> INFOBITS);
     for (i = 0; i < length - 1; i++) {
       int j = i + rand() / (RAND_MAX / (length - i) + 1);
-      int t = clause[i]; clause[i] = clause[j]; clause[j] = t; } } }
+      int t = clause[i]; clause[i] = clause[j]; clause[j] = t; } }
+}
 
 int parse (struct solver* S) {
   int tmp, active = 0, retvalue = SAT;
@@ -1890,7 +1936,7 @@ int main (int argc, char** argv) {
   int sts = ERROR;
   if       (parseReturnValue == ERROR)          printf ("s MEMORY ALLOCATION ERROR\n");
   else if  (parseReturnValue == UNSAT)          printf ("c trivial UNSAT\ns VERIFIED\n");
-  else if  ((sts = verify_wrap_cl_used (&S, -1, -1)) == UNSAT) printf ("s VERIFIED\n");
+  else if  ((sts = verify_wrap_cl_used (&S, -1, -1, S.opt_iteration == S.optimize)) == UNSAT) printf ("s VERIFIED\n");
   else printf ("s NOT VERIFIED\n")  ;
   double current_time = cpuTime();
   double runtime = cpuTime() - S.start_time;
@@ -1906,7 +1952,7 @@ int main (int argc, char** argv) {
       deactivate (&S);
       shuffleProof (&S, S.opt_iteration);
       S.opt_iteration++;
-      verify_wrap_cl_used (&S, 0, 0);
+      verify_wrap_cl_used (&S, 0, 0, S.opt_iteration == S.optimize);
       printf("c Time used: %lf\n", (cpuTime()-myTime));
     } }
 
