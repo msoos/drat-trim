@@ -137,6 +137,7 @@ struct solver { FILE *inputFile, *proofFile, *lratFile, *traceFile, *activeFile;
     char *coreStr, *lemmaStr, *usedClFname;
     long optimize;
     double start_time;
+    float decay;
     int opt_iteration;
     FILE* cl_used_file;
     FILE* anc_cl_used_file;
@@ -265,11 +266,12 @@ static inline void markClause (struct solver* S, int* clause, int index,
     const auto& anc_data =S->anc_datas[anc_data_at];
     for(const auto& a: anc_data) {
       HitData hit(a.cl_id, a.conflict_num);
+      //Add to hits
       auto it = S->hitdata.find(hit);
       if (it != S->hitdata.end()) {
-        it->second+=std::pow(0.8, a.depth);
+        it->second+=std::pow(S->decay, a.depth);
       } else {
-        S->hitdata[hit] = std::pow(0.8, a.depth);
+        S->hitdata[hit] = std::pow(S->decay, a.depth);
       }
 
       //set the ancestor(s) of the new clause the ancestors of this clause
@@ -1012,7 +1014,6 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     //Remove elements that are the same as clid_this
     //Otherwise, it'd create itself. This could only happen due to optimization and a different
     //proof than before
-    size_t b = 0;
     HitData d(clid_this, conflict_num_this);
     auto it = ret_anc_data.find(d);
     if (it != ret_anc_data.end()) {
@@ -1035,8 +1036,19 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
         ancestors.insert(a);
       }
 
-      S->anc_datas.push_back(ancestors);
-      store_at(clause+ANC_DATA_AT, S->anc_datas.size()-1);
+      int64_t old_anc_pos = get_at(clause, ANC_DATA_AT);
+      if (old_anc_pos != 0) {
+        if (S->verb) {
+          printf("Old ancestor:"); printClause(clause, S);
+        }
+        S->anc_datas[old_anc_pos] = ancestors;
+        if (S->verb) {
+          printf("New ancestor:"); printClause(clause, S);
+        }
+      } else {
+        S->anc_datas.push_back(ancestors);
+        store_at(clause+ANC_DATA_AT, S->anc_datas.size()-1);
+      }
     }
     return SUCCESS; }
 
@@ -1884,6 +1896,7 @@ int main (int argc, char** argv) {
   S.anc_cl_used_file = NULL;
   S.anc_assigned = 0;
   S.anc_anc_assigned = 0;
+  S.decay = 0.8;
   S.start_time = cpuTime();
   S.anc_datas.resize(1); //the 0th is ignored
 
@@ -1898,6 +1911,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'L') S.lratFile   = fopen (argv[++i], "w");
       else if (argv[i][1] == 'r') S.traceFile  = fopen (argv[++i], "w");
       else if (argv[i][1] == 't') S.timeout    = atoi (argv[++i]);
+      else if (argv[i][1] == 'd') S.decay      = atof (argv[++i]);
       else if (argv[i][1] == 'b') S.bar        = 1;
       else if (argv[i][1] == 'i') S.cl_ids    = 1;
       else if (argv[i][1] == 'B') S.backforce  = 1;
