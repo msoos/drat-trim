@@ -1844,6 +1844,7 @@ void printHelp ( ) {
   printf ("  -L LEMMAS   prints the core lemmas to the file LEMMAS (LRAT format)\n");
   printf ("  -r TRACE    resolution graph in the TRACE file (TRACECHECK format)\n\n");
   printf ("  -t <lim>    time limit in seconds (default %i)\n", TIMEOUT);
+  printf ("  -d DECAY    Decay factor for ancestors\n");
   printf ("  -u          default unit propatation (i.e., no core-first)\n");
   printf ("  -f          forward mode for UNSAT\n");
   printf ("  -v          more verbose output\n");
