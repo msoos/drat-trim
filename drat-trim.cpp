@@ -255,7 +255,7 @@ static inline void addDependency (struct solver* S, int dep, int forced) {
     S->dependencies[S->nDependencies++] = (dep << 1) + forced; } }
 
 static inline void markClause (struct solver* S, int* clause, int index,
-                               int64_t conflict_no, unordered_set<AncData>* ret_anc_data) {
+                               int64_t conflict_no, unordered_map<HitData, int>* ret_anc_data) {
   S->nResolve++;
   addDependency (S, clause[index - 1] >> 1, (S->assigned > S->forced));
 
@@ -263,33 +263,41 @@ static inline void markClause (struct solver* S, int* clause, int index,
   int64_t anc_data_at = get_at(clause+index, ANC_DATA_AT);
   if (anc_data_at != 0 && S->anc_cl_used_file != NULL) {
     const auto& anc_data =S->anc_datas[anc_data_at];
-    for(const auto& d: anc_data) {
-      HitData d2(d.cl_id, d.conflict_num);
-      auto it = S->hitdata.find(d2);
+    for(const auto& a: anc_data) {
+      HitData hit(a.cl_id, a.conflict_num);
+      auto it = S->hitdata.find(hit);
       if (it != S->hitdata.end()) {
-        it->second+=std::pow(0.8, d.depth);
+        it->second+=std::pow(0.8, a.depth);
       } else {
-        S->hitdata[d2] = std::pow(0.8, d.depth);
+        S->hitdata[hit] = std::pow(0.8, a.depth);
       }
 
       //set the ancestor(s) of the new clause the ancestors of this clause
-      //but increment depth
+      //but increment depth. If it already has a hit, make sure we take the lowest
       if (ret_anc_data != NULL) {
         S->anc_anc_assigned++;
-        AncData d2(d);
-        d2.depth++;
-        ret_anc_data->insert(d2);
+        HitData h(a.cl_id, a.conflict_num);
+        int depth = a.depth+1;
+        auto it2 = ret_anc_data->find(h);
+        if (it2 == ret_anc_data->end()) {
+          (*ret_anc_data)[h] = depth;
+        } else {
+          if (it2->second > depth) {
+            it2->second = depth;
+          }
+        }
       }
     }
   }
 
+  //Take care that the clause itself was used
   int64_t clause_id = get_at(clause+index, CLID);
   if (clause_id != 0) {
       assert(conflict_no >= 0 && "RAT clauses, i.e. BVA cannot be used while tracking clause usefulness. There is some weird optimisation in drat-trim that marks these clauses as having been used at conflict number '-1'.... sorry, can't debug.");
       if(ret_anc_data != NULL) {
           S->anc_assigned++;
-          AncData d(clause_id, get_at(clause+index, CONFLICT_NO), 1);
-          ret_anc_data->insert(d);
+          HitData h(clause_id, get_at(clause+index, CONFLICT_NO));
+          (*ret_anc_data)[h] = 1; //lowest depth, so no need to check for minimality
       }
       if (S->cl_used_file != NULL && S->anc_cl_used_file != NULL) {
           int written;
@@ -337,7 +345,7 @@ static inline void markClause (struct solver* S, int* clause, int index,
 
 // Mark all clauses involved in conflict
 void analyze (struct solver* S, int* clause, int index, int64_t conflict_no,
-              unordered_set<AncData>* ret_anc_data) {
+              unordered_map<HitData, int>* ret_anc_data) {
 
   markClause (S, clause, index, conflict_no, NULL);
   while (S->assigned > S->falseStack) {
@@ -368,7 +376,7 @@ void noAnalyze (struct solver* S) {
   S->processed = S->assigned = S->forced; }
 
 int propagate (struct solver* S, int init, int mark, int64_t conflict_no,
-               unordered_set<AncData>* ret_anc_data)
+               unordered_map<HitData, int>* ret_anc_data)
 { // Performs unit propagation (init not used?)
   int *start[2];
   int check = 0, mode = !S->prep;
@@ -988,7 +996,7 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     S->reason[abs (clause[i])] = 0; }
 
   S->current = clause;
-  unordered_set<AncData> ret_anc_data;
+  unordered_map<HitData, int> ret_anc_data; //min depth is 2nd
   if (propagate (S, 0, mark, get_at(clause, CONFLICT_NO),
       &ret_anc_data) == UNSAT) {
     indegree = S->nResolve - indegree;
@@ -1002,8 +1010,10 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
     int64_t clid_this = get_at(clause, CLID);
     int64_t conflict_num_this = get_at(clause, CONFLICT_NO);
     //Remove elements that are the same as clid_this
+    //Otherwise, it'd create itself. This could only happen due to optimization and a different
+    //proof than before
     size_t b = 0;
-    AncData d(clid_this, conflict_num_this, 1);
+    HitData d(clid_this, conflict_num_this);
     auto it = ret_anc_data.find(d);
     if (it != ret_anc_data.end()) {
       ret_anc_data.erase(it);
@@ -1013,11 +1023,19 @@ int redundancyCheck (struct solver *S, int *clause, int size, int mark) {
       if (S->verb) {
           printf("Set ancestor(s) of CLID %07ld: ", clid_this);
           for(const auto& d: ret_anc_data) {
-            printf("clid: %07ld confl: %07ld, ", d.cl_id, d.conflict_num);
+            printf("clid: %07ld confl: %07ld depth: %d, ", d.first.cl_id, d.first.conflict_num, d.second);
           }
           printf("\n");
       }
-      S->anc_datas.push_back(ret_anc_data);
+
+      //Set the ancestors now. With the map<> we ensured that we prefer parents.
+      unordered_set<AncData> ancestors;
+      for(const auto& h: ret_anc_data) {
+        AncData a(h.first.cl_id, h.first.conflict_num, h.second);
+        ancestors.insert(a);
+      }
+
+      S->anc_datas.push_back(ancestors);
       store_at(clause+ANC_DATA_AT, S->anc_datas.size()-1);
     }
     return SUCCESS; }
