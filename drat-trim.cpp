@@ -1890,7 +1890,7 @@ int main (int argc, char** argv) {
   S.mode       = BACKWARD_UNSAT;
   S.deleted     = 1;
   S.reduce     = 1;
-  S.binMode    = 1;
+  S.binMode    = 0;
   S.binOutput  = 0;
   S.opt_iteration = 0;
   S.cl_used_file = NULL;
