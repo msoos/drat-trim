@@ -1859,6 +1859,7 @@ void printHelp ( ) {
   printf ("  -p          run in plain mode (i.e., ignore deletion information)\n\n");
   printf ("  -R          turn off reduce mode\n\n");
   printf ("  -S          run in SAT check mode (forward checking)\n\n");
+  printf ("  -m          Turn on binary mode\n\n");
   printf ("and input and proof are specified as follows\n\n");
   printf ("  INPUT       input file in DIMACS format\n");
   printf ("  PROOF       proof file in DRAT format (stdin if no argument)\n\n");
@@ -1925,6 +1926,7 @@ int main (int argc, char** argv) {
       else if (argv[i][1] == 'W') S.warning    = HARDWARNING;
       else if (argv[i][1] == 'p') S.deleted     = 0;
       else if (argv[i][1] == 'R') S.reduce     = 0;
+      else if (argv[i][1] == 'm') S.binMode    = 1;
       else if (argv[i][1] == 'f') S.mode       = FORWARD_UNSAT;
       else if (argv[i][1] == 'S') S.mode       = FORWARD_SAT; }
     else {
@@ -1971,7 +1973,6 @@ int main (int argc, char** argv) {
   else if  (parseReturnValue == UNSAT)          printf ("c trivial UNSAT\ns VERIFIED\n");
   else if  ((sts = verify_wrap_cl_used (&S, -1, -1, S.opt_iteration == S.optimize)) == UNSAT) printf ("s VERIFIED\n");
   else printf ("s NOT VERIFIED\n")  ;
-  double current_time = cpuTime();
   double runtime = cpuTime() - S.start_time;
   printf ("c verification time: %.3f seconds\n", runtime);
 
